@@ -403,7 +403,10 @@ fn move_swordsmen(
     c: Res<GameConfig>,
     order: Res<PlayerArmyOrder>,
     mut queries: ParamSet<(
-        Query<(Entity, &Transform), Or<(With<Unit>, With<Statue>)>>,
+        Query<
+            (Entity, &Team, &Transform, Has<Attack>, Has<Controlled>),
+            Or<(With<Unit>, With<Statue>)>,
+        >,
         Query<
             (
                 Entity,
@@ -418,27 +421,47 @@ fn move_swordsmen(
         >,
     )>,
 ) {
-    let target_positions: Vec<(Entity, f32)> = queries
+    let snapshot: Vec<(Entity, Team, f32, bool, bool)> = queries
         .p0()
         .iter()
-        .map(|(entity, transform)| (entity, transform.translation.x))
+        .map(|(entity, team, transform, swordsman, controlled)| {
+            (
+                entity,
+                *team,
+                transform.translation.x,
+                swordsman,
+                controlled,
+            )
+        })
         .collect();
+    let mut player_slots: Vec<Entity> = snapshot
+        .iter()
+        .filter(|(_, team, _, swordsman, controlled)| {
+            *team == Team::Player && *swordsman && !*controlled
+        })
+        .map(|(entity, _, _, _, _)| *entity)
+        .collect();
+    player_slots.sort_by_key(|entity| entity.index());
     for (entity, team, speed, mut transform, attack, mut state, target) in &mut queries.p1() {
         let army_order = if *team == Team::Enemy {
             ArmyOrder::Attack
         } else {
             order.0
         };
-        let fallback = match army_order {
-            ArmyOrder::Defend => defense_x(*team, &c),
-            ArmyOrder::Retreat => retreat_x(*team, &c),
-            ArmyOrder::Attack => transform.translation.x,
+        let slot = player_slots
+            .iter()
+            .position(|candidate| *candidate == entity)
+            .unwrap_or(0);
+        let fallback = if army_order == ArmyOrder::Attack {
+            transform.translation.x
+        } else {
+            resting_x(*team, army_order, slot, &c)
         };
         let destination = target.and_then(|target| {
-            target_positions
+            snapshot
                 .iter()
-                .find(|(entity, _)| *entity == target.0)
-                .map(|(_, x)| *x)
+                .find(|(entity, _, _, _, _)| *entity == target.0)
+                .map(|(_, _, x, _, _)| *x)
         });
         if target.is_some() && destination.is_none() {
             commands.entity(entity).remove::<CurrentTarget>();

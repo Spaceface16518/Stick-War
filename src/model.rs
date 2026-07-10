@@ -171,6 +171,7 @@ pub struct GameConfig {
     pub statue_health: f32,
     pub defense_radius: f32,
     pub retreat_offset: f32,
+    pub formation_spacing: f32,
 }
 impl Default for GameConfig {
     fn default() -> Self {
@@ -197,6 +198,7 @@ impl Default for GameConfig {
             statue_health: 500.0,
             defense_radius: 280.0,
             retreat_offset: 100.0,
+            formation_spacing: 72.0,
         }
     }
 }
@@ -236,6 +238,14 @@ pub fn defense_x(team: Team, c: &GameConfig) -> f32 {
 }
 pub fn retreat_x(team: Team, c: &GameConfig) -> f32 {
     statue_x(team, c) - team.direction() * c.retreat_offset
+}
+pub fn resting_x(team: Team, order: ArmyOrder, slot: usize, c: &GameConfig) -> f32 {
+    let offset = slot as f32 * c.formation_spacing;
+    match order {
+        ArmyOrder::Defend => defense_x(team, c) + team.direction() * offset,
+        ArmyOrder::Retreat => retreat_x(team, c) - team.direction() * offset,
+        ArmyOrder::Attack => statue_x(team, c),
+    }
 }
 pub fn step_toward(current: f32, destination: f32, speed: f32, dt: f32) -> f32 {
     let difference = destination - current;
@@ -352,5 +362,19 @@ mod tests {
     fn attackers_take_target_priority() {
         assert!(target_priority(true, false) < target_priority(false, true));
         assert!(target_priority(false, true) < target_priority(false, false));
+    }
+
+    #[test]
+    fn resting_slots_are_spaced_on_the_correct_side() {
+        let c = GameConfig::default();
+        let first = resting_x(Team::Player, ArmyOrder::Defend, 0, &c);
+        let second = resting_x(Team::Player, ArmyOrder::Defend, 1, &c);
+        assert_eq!(second - first, c.formation_spacing);
+        assert!(first > c.player_mine_x);
+
+        let retreat_first = resting_x(Team::Player, ArmyOrder::Retreat, 0, &c);
+        let retreat_second = resting_x(Team::Player, ArmyOrder::Retreat, 1, &c);
+        assert_eq!(retreat_first - retreat_second, c.formation_spacing);
+        assert!(retreat_first < c.player_statue_x);
     }
 }
