@@ -36,7 +36,12 @@ impl Plugin for BattlePlugin {
         )
         .add_systems(
             Update,
-            (enemy_controller, process_training, acquire_targets)
+            (
+                passive_income,
+                enemy_controller,
+                process_training,
+                acquire_targets,
+            )
                 .chain()
                 .in_set(BattleSet::Decisions),
         )
@@ -80,6 +85,10 @@ fn setup_battle(
         population_limit: 12,
     });
     commands.insert_resource(PlayerArmyOrder(ArmyOrder::Defend));
+    commands.insert_resource(PassiveIncome(Timer::from_seconds(
+        c.passive_income_seconds,
+        TimerMode::Repeating,
+    )));
     commands.insert_resource(EnemyController {
         spawn_timer: Timer::from_seconds(2.0, TimerMode::Repeating),
         next_unit: UnitKind::Miner,
@@ -121,7 +130,19 @@ fn cleanup_battle(mut commands: Commands, entities: Query<Entity, With<BattleEnt
     }
     commands.remove_resource::<Economy>();
     commands.remove_resource::<PlayerArmyOrder>();
+    commands.remove_resource::<PassiveIncome>();
     commands.remove_resource::<EnemyController>();
+}
+
+fn passive_income(
+    time: Res<Time>,
+    c: Res<GameConfig>,
+    mut timer: ResMut<PassiveIncome>,
+    mut economy: ResMut<Economy>,
+) {
+    if timer.0.tick(time.delta()).just_finished() {
+        economy.player_gold += c.passive_income_amount;
+    }
 }
 
 fn keyboard_orders(
@@ -257,6 +278,7 @@ fn process_training(
 fn move_miners(
     time: Res<Time>,
     c: Res<GameConfig>,
+    order: Res<PlayerArmyOrder>,
     mut economy: ResMut<Economy>,
     mut miners: Query<(
         &Team,
@@ -268,6 +290,15 @@ fn move_miners(
     )>,
 ) {
     for (team, speed, mut transform, mut state, mut timer, mut carried) in &mut miners {
+        if *team == Team::Player && order.0 == ArmyOrder::Retreat {
+            transform.translation.x = step_toward(
+                transform.translation.x,
+                retreat_x(*team, &c),
+                speed.0,
+                time.delta_secs(),
+            );
+            continue;
+        }
         match *state {
             MinerState::GoingToMine => {
                 let dest = mine_x(*team, &c);
@@ -302,19 +333,13 @@ fn acquire_targets(
     mut commands: Commands,
     c: Res<GameConfig>,
     order: Res<PlayerArmyOrder>,
-    attackers: Query<
-        (
-            Entity,
-            &Team,
-            &Transform,
-            Has<Controlled>,
-            Option<&CurrentTarget>,
-        ),
-        With<Attack>,
+    attackers: Query<(Entity, &Team, Has<Controlled>, Option<&CurrentTarget>), With<Attack>>,
+    candidates: Query<
+        (Entity, &Team, &Transform, Has<Unit>, Option<&CurrentTarget>),
+        Or<(With<Unit>, With<Statue>)>,
     >,
-    candidates: Query<(Entity, &Team, &Transform, Has<Unit>), Or<(With<Unit>, With<Statue>)>>,
 ) {
-    for (entity, team, transform, controlled, target) in &attackers {
+    for (entity, team, controlled, target) in &attackers {
         if controlled {
             if target.is_some() {
                 commands.entity(entity).remove::<CurrentTarget>();
@@ -332,30 +357,42 @@ fn acquire_targets(
             }
             continue;
         }
-        if target.is_some() {
-            continue;
-        }
+        let current = target.map(|target| target.0);
         let chosen = candidates
             .iter()
-            .filter(|(_, other, other_transform, _)| {
+            .filter(|(_, other, other_transform, _, _)| {
                 if *other == team {
                     return false;
                 }
                 army_order != ArmyOrder::Defend
-                    || (other_transform.translation.x - c.player_statue_x).abs() <= c.defense_radius
+                    || (other_transform.translation.x - defense_x(*team, &c)).abs()
+                        <= c.defense_radius
             })
             .min_by(|a, b| {
-                let ap = if a.3 { 0 } else { 1 };
-                let bp = if b.3 { 0 } else { 1 };
+                let priority =
+                    |candidate: &(Entity, &Team, &Transform, bool, Option<&CurrentTarget>)| {
+                        target_priority(
+                            candidate
+                                .4
+                                .is_some_and(|their_target| their_target.0 == entity),
+                            current == Some(candidate.0),
+                        )
+                    };
+                let ap = priority(a);
+                let bp = priority(b);
                 ap.cmp(&bp).then_with(|| {
-                    (a.2.translation.x - transform.translation.x)
+                    (a.2.translation.x - statue_x(*team, &c))
                         .abs()
-                        .total_cmp(&(b.2.translation.x - transform.translation.x).abs())
+                        .total_cmp(&(b.2.translation.x - statue_x(*team, &c)).abs())
                 })
             })
             .map(|x| x.0);
-        if let Some(target) = chosen {
-            commands.entity(entity).insert(CurrentTarget(target));
+        if chosen != current {
+            if let Some(target) = chosen {
+                commands.entity(entity).insert(CurrentTarget(target));
+            } else if current.is_some() {
+                commands.entity(entity).remove::<CurrentTarget>();
+            }
         }
     }
 }
@@ -408,7 +445,7 @@ fn move_swordsmen(
             continue;
         }
         if army_order == ArmyOrder::Defend
-            && destination.is_some_and(|x| (x - c.player_statue_x).abs() > c.defense_radius)
+            && destination.is_some_and(|x| (x - defense_x(*team, &c)).abs() > c.defense_radius)
         {
             commands.entity(entity).remove::<CurrentTarget>();
             continue;

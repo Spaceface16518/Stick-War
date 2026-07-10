@@ -105,6 +105,8 @@ pub enum ArmyOrder {
 }
 #[derive(Resource)]
 pub struct PlayerArmyOrder(pub ArmyOrder);
+#[derive(Resource)]
+pub struct PassiveIncome(pub Timer);
 
 #[derive(Resource)]
 pub struct Economy {
@@ -158,6 +160,8 @@ pub struct GameConfig {
     pub miner_speed: f32,
     pub miner_capacity: u32,
     pub mining_duration: f32,
+    pub passive_income_amount: u32,
+    pub passive_income_seconds: f32,
     pub swordsman_cost: u32,
     pub swordsman_health: f32,
     pub swordsman_speed: f32,
@@ -179,9 +183,11 @@ impl Default for GameConfig {
             enemy_mine_x: 1080.0,
             miner_cost: 50,
             miner_health: 40.0,
-            miner_speed: 90.0,
+            miner_speed: 65.0,
             miner_capacity: 25,
             mining_duration: 1.5,
+            passive_income_amount: 5,
+            passive_income_seconds: 2.0,
             swordsman_cost: 100,
             swordsman_health: 100.0,
             swordsman_speed: 120.0,
@@ -226,7 +232,7 @@ pub fn mine_x(team: Team, c: &GameConfig) -> f32 {
     }
 }
 pub fn defense_x(team: Team, c: &GameConfig) -> f32 {
-    statue_x(team, c) + team.direction() * 140.0
+    mine_x(team, c) + team.direction() * 120.0
 }
 pub fn retreat_x(team: Team, c: &GameConfig) -> f32 {
     statue_x(team, c) - team.direction() * c.retreat_offset
@@ -242,6 +248,15 @@ pub fn step_toward(current: f32, destination: f32, speed: f32, dt: f32) -> f32 {
 }
 pub fn apply_damage_value(current: f32, damage: f32) -> f32 {
     (current - damage).max(0.0)
+}
+pub fn target_priority(is_attacking_us: bool, is_current_target: bool) -> u8 {
+    if is_attacking_us {
+        0
+    } else if is_current_target {
+        1
+    } else {
+        2
+    }
 }
 pub fn try_purchase_unit(
     team: Team,
@@ -322,8 +337,20 @@ mod tests {
     #[test]
     fn defensive_positions_are_team_sided() {
         let c = GameConfig::default();
-        assert!(defense_x(Team::Player, &c) > c.player_statue_x);
+        assert!(defense_x(Team::Player, &c) > c.player_mine_x);
         assert!(retreat_x(Team::Player, &c) < c.player_statue_x);
-        assert!(defense_x(Team::Enemy, &c) < c.enemy_statue_x);
+        assert!(defense_x(Team::Enemy, &c) < c.enemy_mine_x);
+    }
+
+    #[test]
+    fn miners_are_slower_than_swordsmen() {
+        let c = GameConfig::default();
+        assert!(c.miner_speed < c.swordsman_speed);
+    }
+
+    #[test]
+    fn attackers_take_target_priority() {
+        assert!(target_priority(true, false) < target_priority(false, true));
+        assert!(target_priority(false, true) < target_priority(false, false));
     }
 }
