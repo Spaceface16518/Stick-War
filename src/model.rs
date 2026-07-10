@@ -66,6 +66,18 @@ pub struct HealthBarFill {
 }
 #[derive(Component)]
 pub struct SelectionMarker;
+#[derive(Component)]
+pub struct Limb {
+    pub kind: LimbKind,
+    pub rest_angle: f32,
+}
+#[derive(Debug, Clone, Copy)]
+pub enum LimbKind {
+    LeftArm,
+    RightArm,
+    LeftLeg,
+    RightLeg,
+}
 
 #[derive(Component, Debug, Clone, Copy, Eq, PartialEq)]
 pub enum MinerState {

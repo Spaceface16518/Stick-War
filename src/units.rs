@@ -17,6 +17,23 @@ fn piece(
     ));
 }
 
+fn limb(
+    parent: &mut ChildSpawnerCommands,
+    color: Color,
+    position: Vec3,
+    angle: f32,
+    kind: LimbKind,
+) {
+    parent.spawn((
+        Limb {
+            kind,
+            rest_angle: angle,
+        },
+        Sprite::from_color(color, Vec2::new(7.0, 40.0)),
+        Transform::from_translation(position).with_rotation(Quat::from_rotation_z(angle)),
+    ));
+}
+
 fn stick_figure(commands: &mut Commands, root: Entity, team: Team, sword: bool) {
     let color = team_color(team);
     commands.entity(root).with_children(|p| {
@@ -34,33 +51,33 @@ fn stick_figure(commands: &mut Commands, root: Entity, team: Team, sword: bool) 
             Vec3::new(0.0, 25.0, 1.0),
             0.0,
         );
-        piece(
+        limb(
             p,
             color,
-            Vec2::new(7.0, 38.0),
             Vec3::new(-11.0, 26.0, 1.0),
             0.45,
+            LimbKind::LeftArm,
         );
-        piece(
+        limb(
             p,
             color,
-            Vec2::new(7.0, 38.0),
             Vec3::new(11.0, 26.0, 1.0),
             -0.45,
+            LimbKind::RightArm,
         );
-        piece(
+        limb(
             p,
             color,
-            Vec2::new(7.0, 42.0),
             Vec3::new(-10.0, -14.0, 1.0),
             -0.35,
+            LimbKind::LeftLeg,
         );
-        piece(
+        limb(
             p,
             color,
-            Vec2::new(7.0, 42.0),
             Vec3::new(10.0, -14.0, 1.0),
             0.35,
+            LimbKind::RightLeg,
         );
         if sword {
             piece(

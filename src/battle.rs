@@ -56,7 +56,12 @@ impl Plugin for BattlePlugin {
         )
         .add_systems(
             Update,
-            (update_health_bars, update_selection_markers).in_set(BattleSet::Presentation),
+            (
+                update_health_bars,
+                update_selection_markers,
+                animate_walking,
+            )
+                .in_set(BattleSet::Presentation),
         );
     }
 }

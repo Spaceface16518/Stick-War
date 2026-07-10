@@ -64,3 +64,26 @@ pub fn update_selection_markers(
         };
     }
 }
+
+pub fn animate_walking(
+    time: Res<Time>,
+    roots: Query<(Option<&MinerState>, Option<&SwordsmanState>), With<Unit>>,
+    mut limbs: Query<(&ChildOf, &Limb, &mut Transform)>,
+) {
+    let swing = (time.elapsed_secs() * 8.0).sin() * 0.4;
+    for (parent, limb, mut transform) in &mut limbs {
+        let Ok((miner, swordsman)) = roots.get(parent.parent()) else {
+            continue;
+        };
+        let moving = miner.is_some_and(|state| *state != MinerState::Mining)
+            || swordsman.is_some_and(|state| {
+                matches!(state, SwordsmanState::Moving | SwordsmanState::Retreating)
+            });
+        let direction = match limb.kind {
+            LimbKind::LeftArm | LimbKind::RightLeg => 1.0,
+            LimbKind::RightArm | LimbKind::LeftLeg => -1.0,
+        };
+        let angle = limb.rest_angle + if moving { swing * direction } else { 0.0 };
+        transform.rotation = Quat::from_rotation_z(angle);
+    }
+}
