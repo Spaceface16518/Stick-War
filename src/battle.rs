@@ -360,21 +360,28 @@ fn move_swordsmen(
     time: Res<Time>,
     c: Res<GameConfig>,
     order: Res<PlayerArmyOrder>,
-    targets: Query<&Transform>,
-    mut units: Query<
-        (
-            Entity,
-            &Team,
-            &MoveSpeed,
-            &mut Transform,
-            &Attack,
-            &mut SwordsmanState,
-            Option<&CurrentTarget>,
-        ),
-        (With<Unit>, Without<Controlled>),
-    >,
+    mut queries: ParamSet<(
+        Query<(Entity, &Transform), Or<(With<Unit>, With<Statue>)>>,
+        Query<
+            (
+                Entity,
+                &Team,
+                &MoveSpeed,
+                &mut Transform,
+                &Attack,
+                &mut SwordsmanState,
+                Option<&CurrentTarget>,
+            ),
+            (With<Unit>, Without<Controlled>),
+        >,
+    )>,
 ) {
-    for (entity, team, speed, mut transform, attack, mut state, target) in &mut units {
+    let target_positions: Vec<(Entity, f32)> = queries
+        .p0()
+        .iter()
+        .map(|(entity, transform)| (entity, transform.translation.x))
+        .collect();
+    for (entity, team, speed, mut transform, attack, mut state, target) in &mut queries.p1() {
         let army_order = if *team == Team::Enemy {
             ArmyOrder::Attack
         } else {
@@ -385,9 +392,12 @@ fn move_swordsmen(
             ArmyOrder::Retreat => retreat_x(*team, &c),
             ArmyOrder::Attack => transform.translation.x,
         };
-        let destination = target
-            .and_then(|t| targets.get(t.0).ok())
-            .map(|t| t.translation.x);
+        let destination = target.and_then(|target| {
+            target_positions
+                .iter()
+                .find(|(entity, _)| *entity == target.0)
+                .map(|(_, x)| *x)
+        });
         if target.is_some() && destination.is_none() {
             commands.entity(entity).remove::<CurrentTarget>();
             continue;
