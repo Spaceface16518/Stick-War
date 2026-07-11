@@ -62,6 +62,13 @@ pub enum AttackMode {
     Melee,
     Projectile { speed: f32 },
 }
+#[derive(Component, Debug, Clone, Copy)]
+pub struct Projectile {
+    pub team: Team,
+    pub damage: f32,
+    pub velocity_x: f32,
+    pub previous_x: f32,
+}
 #[derive(Component)]
 pub struct CurrentTarget(pub Entity);
 #[derive(Component)]
@@ -259,12 +266,37 @@ pub fn defense_x(team: Team, c: &GameConfig) -> f32 {
 pub fn retreat_x(team: Team, c: &GameConfig) -> f32 {
     statue_x(team, c) - team.direction() * c.retreat_offset
 }
-pub fn resting_x(team: Team, order: ArmyOrder, slot: usize, c: &GameConfig) -> f32 {
-    let offset = slot as f32 * c.formation_spacing;
-    match order {
-        ArmyOrder::Defend => defense_x(team, c) + team.direction() * offset,
-        ArmyOrder::Retreat => retreat_x(team, c) - team.direction() * offset,
-        ArmyOrder::Attack => statue_x(team, c),
+pub fn formation_x(
+    team: Team,
+    order: ArmyOrder,
+    kind: UnitKind,
+    role_slot: usize,
+    combat_slot: usize,
+    c: &GameConfig,
+) -> f32 {
+    if order == ArmyOrder::Retreat {
+        return retreat_x(team, c) - team.direction() * combat_slot as f32 * c.formation_spacing;
+    }
+    if order == ArmyOrder::Attack {
+        return statue_x(team, c);
+    }
+    let front_offset = match kind {
+        UnitKind::Swordsman => 120.0 + role_slot as f32 * c.formation_spacing,
+        UnitKind::Archer => 45.0 + role_slot as f32 * c.formation_spacing,
+        UnitKind::Miner => 0.0,
+    };
+    mine_x(team, c) + team.direction() * front_offset
+}
+pub fn segment_crosses_point(from: f32, to: f32, point: f32, radius: f32) -> bool {
+    let low = from.min(to) - radius;
+    let high = from.max(to) + radius;
+    point >= low && point <= high
+}
+pub fn target_distance(kind: UnitKind, attack_range: f32) -> f32 {
+    if kind == UnitKind::Archer {
+        attack_range * 0.78
+    } else {
+        attack_range
     }
 }
 pub fn step_toward(current: f32, destination: f32, speed: f32, dt: f32) -> f32 {
