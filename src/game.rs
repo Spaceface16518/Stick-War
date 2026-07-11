@@ -5,6 +5,7 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<AppState>()
+            .add_computed_state::<GameplayState>()
             .add_computed_state::<RuntimeActivity>()
             // UI-only states do not need a continuously running game loop. Start
             // reactively so the title screen is low-power from the first frame.
@@ -25,7 +26,7 @@ impl Plugin for GamePlugin {
     }
 }
 
-/// The update-loop behavior required by the current app state.
+/// The update-loop behavior required by the current gameplay lifecycle.
 ///
 /// New screens are low-power by default. Only states that actively simulate
 /// gameplay should be listed as `Simulation` here.
@@ -36,12 +37,12 @@ enum RuntimeActivity {
 }
 
 impl ComputedStates for RuntimeActivity {
-    type SourceStates = AppState;
+    type SourceStates = GameplayState;
 
-    fn compute(state: AppState) -> Option<Self> {
+    fn compute(state: GameplayState) -> Option<Self> {
         Some(match state {
-            AppState::Battle => Self::Simulation,
-            _ => Self::Interface,
+            GameplayState::Active => Self::Simulation,
+            GameplayState::Interface => Self::Interface,
         })
     }
 }

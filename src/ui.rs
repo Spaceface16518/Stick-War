@@ -1,5 +1,5 @@
 use crate::model::*;
-use bevy::{app::AppExit, prelude::*};
+use bevy::{app::AppExit, ecs::system::SystemParam, prelude::*};
 
 pub struct UiPlugin;
 impl Plugin for UiPlugin {
@@ -7,10 +7,10 @@ impl Plugin for UiPlugin {
         app.add_systems(OnEnter(AppState::MainMenu), setup_menu)
             .add_systems(OnExit(AppState::MainMenu), cleanup::<MainMenuEntity>)
             .add_systems(Update, menu_buttons.run_if(in_state(AppState::MainMenu)))
-            .add_systems(OnEnter(AppState::Battle), setup_hud)
+            .add_systems(OnEnter(GameplayState::Active), setup_hud)
             .add_systems(
                 Update,
-                (battle_buttons, update_hud).run_if(in_state(AppState::Battle)),
+                (battle_buttons, update_hud).run_if(in_state(GameplayState::Active)),
             )
             .add_systems(OnEnter(AppState::Results), setup_results)
             .add_systems(OnExit(AppState::Results), cleanup::<ResultsEntity>)
@@ -20,17 +20,19 @@ impl Plugin for UiPlugin {
 
 #[derive(Component)]
 enum MenuButton {
-    Start,
+    Battle,
+    Sandbox,
     Quit,
 }
-#[derive(Component)]
+#[derive(Component, Clone, Copy)]
 enum BattleButton {
-    TrainMiner,
-    TrainSwordsman,
-    TrainArcher,
-    Attack,
-    Defend,
-    Retreat,
+    Train(Team, UnitKind),
+    Order(Team, ArmyOrder),
+    TogglePause,
+    ToggleCosts,
+    ToggleTrainingTime,
+    PopulationDelta(i32),
+    MainMenu,
 }
 #[derive(Component)]
 enum ResultsButton {
@@ -38,13 +40,22 @@ enum ResultsButton {
     MainMenu,
 }
 #[derive(Component)]
-struct GoldText;
+struct PlayerStatusText;
 #[derive(Component)]
-struct PopulationText;
+struct EnemyStatusText;
 #[derive(Component)]
-struct StatueText;
+struct ClockText;
 #[derive(Component)]
-struct OrderText;
+struct SandboxStatusText;
+
+#[derive(SystemParam)]
+struct HudData<'w> {
+    economy: Res<'w, Economy>,
+    orders: Res<'w, ArmyOrders>,
+    settings: Res<'w, SandboxSettings>,
+    clock: Res<'w, BattleClock>,
+    training: Res<'w, TrainingQueue>,
+}
 
 fn root_node() -> Node {
     Node {
@@ -73,6 +84,16 @@ fn button_node() -> Node {
     }
 }
 
+fn hud_button_node() -> Node {
+    Node {
+        padding: UiRect::axes(px(7), px(4)),
+        margin: UiRect::all(px(2)),
+        justify_content: JustifyContent::Center,
+        min_width: px(72),
+        ..default()
+    }
+}
+
 fn setup_menu(mut commands: Commands) {
     commands.spawn((
         MainMenuEntity,
@@ -91,12 +112,23 @@ fn setup_menu(mut commands: Commands) {
             ),
             (
                 Button,
-                MenuButton::Start,
+                MenuButton::Battle,
                 button_node(),
                 BackgroundColor(Color::srgb(0.12, 0.35, 0.75)),
                 children![(
                     Text::new("START BATTLE"),
                     text_style(24.0),
+                    TextColor(Color::WHITE)
+                )]
+            ),
+            (
+                Button,
+                MenuButton::Sandbox,
+                button_node(),
+                BackgroundColor(Color::srgb(0.16, 0.48, 0.38)),
+                children![(
+                    Text::new("SANDBOX"),
+                    text_style(22.0),
                     TextColor(Color::WHITE)
                 )]
             ),
@@ -127,7 +159,8 @@ fn menu_buttons(
             continue;
         }
         match button {
-            MenuButton::Start => next.set(AppState::Battle),
+            MenuButton::Battle => next.set(AppState::Battle),
+            MenuButton::Sandbox => next.set(AppState::Sandbox),
             MenuButton::Quit => {
                 exit.write(AppExit::Success);
             }
@@ -139,112 +172,279 @@ fn hud_button(parent: &mut ChildSpawnerCommands, label: &str, kind: BattleButton
     parent.spawn((
         Button,
         kind,
-        button_node(),
+        hud_button_node(),
         BackgroundColor(Color::srgba(0.08, 0.1, 0.16, 0.92)),
-        children![(Text::new(label), text_style(18.0), TextColor(Color::WHITE))],
+        children![(Text::new(label), text_style(13.0), TextColor(Color::WHITE))],
     ));
 }
 
-fn setup_hud(mut commands: Commands) {
-    commands.spawn((BattleEntity,Node{position_type:PositionType::Absolute,top:px(0),left:px(0),width:percent(100),height:percent(100),flex_direction:FlexDirection::Column,justify_content:JustifyContent::SpaceBetween,..default()},children![
-        (Node{width:percent(100),padding:UiRect::all(px(10)),justify_content:JustifyContent::SpaceAround,flex_wrap:FlexWrap::Wrap,column_gap:px(16),row_gap:px(4),..default()},BackgroundColor(Color::srgba(0.03,0.04,0.07,0.9)),children![
-            (GoldText,Text::new("Gold"),text_style(20.0),TextColor(Color::srgb(1.0,0.82,0.2))),
-            (PopulationText,Text::new("Population"),text_style(20.0),TextColor(Color::WHITE)),
-            (StatueText,Text::new("Statues"),text_style(20.0),TextColor(Color::WHITE)),
-            (OrderText,Text::new("Order"),text_style(20.0),TextColor(Color::srgb(0.4,0.8,1.0)))
-        ]),
-        (Node{width:percent(100),padding:UiRect::all(px(8)),flex_direction:FlexDirection::Column,align_items:AlignItems::Center,..default()},children![
-            (Node{justify_content:JustifyContent::Center,flex_wrap:FlexWrap::Wrap,..default()},children![]),
-            (Text::new("M/S/R train  |  1 Attack  2 Defend  3 Retreat  |  Tab control  A/D or arrows move  Space attack  Esc release"),text_style(14.0),TextColor(Color::WHITE),TextLayout::justify(Justify::Center),Node{margin:UiRect::top(px(4)),padding:UiRect::horizontal(px(8)),max_width:percent(100),..default()})
-        ])
-    ])).with_children(|root| {
-        let mut row=root.spawn((Node{position_type:PositionType::Absolute,bottom:px(42),left:percent(0),width:percent(100),justify_content:JustifyContent::Center,flex_wrap:FlexWrap::Wrap,..default()},));
-        row.with_children(|p|{hud_button(p,"MINER 50 [M]",BattleButton::TrainMiner);hud_button(p,"SWORD 100 [S]",BattleButton::TrainSwordsman);hud_button(p,"ARCHER 125 [R]",BattleButton::TrainArcher);hud_button(p,"ATTACK [1]",BattleButton::Attack);hud_button(p,"DEFEND [2]",BattleButton::Defend);hud_button(p,"RETREAT [3]",BattleButton::Retreat);});
-    });
+fn setup_hud(mut commands: Commands, state: Res<State<AppState>>, c: Res<GameConfig>) {
+    let sandbox = *state.get() == AppState::Sandbox;
+    commands
+        .spawn((
+            BattleEntity,
+            Node {
+                position_type: PositionType::Absolute,
+                top: px(0),
+                left: px(0),
+                width: percent(100),
+                height: percent(100),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::SpaceBetween,
+                ..default()
+            },
+        ))
+        .with_children(|root| {
+            root.spawn((
+                Node {
+                    width: percent(100),
+                    padding: UiRect::axes(px(8), px(5)),
+                    justify_content: JustifyContent::SpaceBetween,
+                    align_items: AlignItems::Center,
+                    column_gap: px(10),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.03, 0.04, 0.07, 0.92)),
+            ))
+            .with_children(|top| {
+                top.spawn((
+                    PlayerStatusText,
+                    Text::new("PLAYER"),
+                    text_style(14.0),
+                    TextColor(Color::srgb(0.45, 0.8, 1.0)),
+                ));
+                top.spawn((
+                    ClockText,
+                    Text::new("00:00"),
+                    text_style(16.0),
+                    TextColor(Color::WHITE),
+                ));
+                top.spawn((
+                    EnemyStatusText,
+                    Text::new("ENEMY"),
+                    text_style(14.0),
+                    TextColor(Color::srgb(1.0, 0.48, 0.42)),
+                ));
+            });
+
+            root.spawn((
+                Node {
+                    width: percent(100),
+                    padding: UiRect::axes(px(5), px(4)),
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.03, 0.04, 0.07, 0.9)),
+            ))
+            .with_children(|panel| {
+                if sandbox {
+                    panel
+                        .spawn((
+                            Node {
+                                justify_content: JustifyContent::Center,
+                                flex_wrap: FlexWrap::Wrap,
+                                ..default()
+                            },
+                        ))
+                        .with_children(|settings| {
+                            hud_button(settings, "PAUSE", BattleButton::TogglePause);
+                            hud_button(settings, "COSTS", BattleButton::ToggleCosts);
+                            hud_button(
+                                settings,
+                                "TRAIN TIME",
+                                BattleButton::ToggleTrainingTime,
+                            );
+                            hud_button(settings, "POP -5", BattleButton::PopulationDelta(-5));
+                            hud_button(settings, "POP -1", BattleButton::PopulationDelta(-1));
+                            hud_button(settings, "POP +1", BattleButton::PopulationDelta(1));
+                            hud_button(settings, "POP +5", BattleButton::PopulationDelta(5));
+                            hud_button(settings, "MENU", BattleButton::MainMenu);
+                        });
+                    panel.spawn((
+                        SandboxStatusText,
+                        Text::new("SANDBOX"),
+                        text_style(12.0),
+                        TextColor(Color::srgb(0.55, 1.0, 0.72)),
+                    ));
+                } else {
+                    panel.spawn((SandboxStatusText, Text::new(""), text_style(1.0)));
+                }
+
+                spawn_team_controls(panel, Team::Player, &c, true);
+                if sandbox {
+                    spawn_team_controls(panel, Team::Enemy, &c, false);
+                }
+                panel.spawn((
+                    Text::new(
+                        "M/S/R train | 1/2/3 orders | Tab control | A/D or arrows move | Space attack | Esc release",
+                    ),
+                    text_style(11.0),
+                    TextColor(Color::srgb(0.78, 0.8, 0.86)),
+                    TextLayout::justify(Justify::Center),
+                    Node {
+                        margin: UiRect::top(px(2)),
+                        max_width: percent(100),
+                        ..default()
+                    },
+                ));
+            });
+        });
+}
+
+fn spawn_team_controls(
+    parent: &mut ChildSpawnerCommands,
+    team: Team,
+    c: &GameConfig,
+    show_shortcuts: bool,
+) {
+    parent
+        .spawn((Node {
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            flex_wrap: FlexWrap::Wrap,
+            ..default()
+        },))
+        .with_children(|row| {
+            row.spawn((
+                Text::new(if team == Team::Player { "YOU" } else { "ENEMY" }),
+                text_style(12.0),
+                TextColor(if team == Team::Player {
+                    Color::srgb(0.45, 0.8, 1.0)
+                } else {
+                    Color::srgb(1.0, 0.48, 0.42)
+                }),
+                Node {
+                    width: px(48),
+                    ..default()
+                },
+            ));
+            let shortcut = |key| if show_shortcuts { key } else { "" };
+            hud_button(
+                row,
+                &format!("MINER {}{}", c.units.miner.cost, shortcut(" [M]")),
+                BattleButton::Train(team, UnitKind::Miner),
+            );
+            hud_button(
+                row,
+                &format!("SWORD {}{}", c.units.swordsman.cost, shortcut(" [S]")),
+                BattleButton::Train(team, UnitKind::Swordsman),
+            );
+            hud_button(
+                row,
+                &format!("ARCHER {}{}", c.units.archer.cost, shortcut(" [R]")),
+                BattleButton::Train(team, UnitKind::Archer),
+            );
+            hud_button(
+                row,
+                &format!("ATTACK{}", shortcut(" [1]")),
+                BattleButton::Order(team, ArmyOrder::Attack),
+            );
+            hud_button(
+                row,
+                &format!("DEFEND{}", shortcut(" [2]")),
+                BattleButton::Order(team, ArmyOrder::Defend),
+            );
+            hud_button(
+                row,
+                &format!("RETREAT{}", shortcut(" [3]")),
+                BattleButton::Order(team, ArmyOrder::Retreat),
+            );
+        });
 }
 
 fn battle_buttons(
     interactions: Query<(&Interaction, &BattleButton), (Changed<Interaction>, With<Button>)>,
     mut train: MessageWriter<TrainUnitRequest>,
-    mut order: ResMut<PlayerArmyOrder>,
+    mut orders: ResMut<ArmyOrders>,
+    mut settings: ResMut<SandboxSettings>,
+    mut economy: ResMut<Economy>,
+    mut next: ResMut<NextState<AppState>>,
 ) {
     for (interaction, button) in &interactions {
         if *interaction != Interaction::Pressed {
             continue;
         }
         match button {
-            BattleButton::TrainMiner => {
+            BattleButton::Train(team, kind) => {
                 train.write(TrainUnitRequest {
-                    team: Team::Player,
-                    kind: UnitKind::Miner,
+                    team: *team,
+                    kind: *kind,
                 });
             }
-            BattleButton::TrainSwordsman => {
-                train.write(TrainUnitRequest {
-                    team: Team::Player,
-                    kind: UnitKind::Swordsman,
-                });
+            BattleButton::Order(team, order) => orders.set(*team, *order),
+            BattleButton::TogglePause if settings.is_sandbox => {
+                settings.paused = !settings.paused;
             }
-            BattleButton::TrainArcher => {
-                train.write(TrainUnitRequest {
-                    team: Team::Player,
-                    kind: UnitKind::Archer,
-                });
+            BattleButton::ToggleCosts if settings.is_sandbox => {
+                settings.charge_costs = !settings.charge_costs;
             }
-            BattleButton::Attack => order.0 = ArmyOrder::Attack,
-            BattleButton::Defend => order.0 = ArmyOrder::Defend,
-            BattleButton::Retreat => order.0 = ArmyOrder::Retreat,
+            BattleButton::ToggleTrainingTime if settings.is_sandbox => {
+                settings.training_time_enabled = !settings.training_time_enabled;
+            }
+            BattleButton::PopulationDelta(delta) if settings.is_sandbox => {
+                economy.population_limit = if *delta < 0 {
+                    economy
+                        .population_limit
+                        .saturating_sub(delta.unsigned_abs())
+                } else {
+                    economy.population_limit.saturating_add(*delta as u32)
+                }
+                .max(1);
+            }
+            BattleButton::MainMenu => next.set(AppState::MainMenu),
+            _ => {}
         }
     }
 }
 
 fn update_hud(
-    economy: Res<Economy>,
-    order: Res<PlayerArmyOrder>,
+    data: HudData,
     statues: Query<(&Team, &Health), With<Statue>>,
-    mut gold: Single<
+    mut player_text: Single<
         &mut Text,
         (
-            With<GoldText>,
-            Without<PopulationText>,
-            Without<StatueText>,
-            Without<OrderText>,
+            With<PlayerStatusText>,
+            Without<EnemyStatusText>,
+            Without<ClockText>,
+            Without<SandboxStatusText>,
         ),
     >,
-    mut pop: Single<
+    mut enemy_text: Single<
         &mut Text,
         (
-            With<PopulationText>,
-            Without<GoldText>,
-            Without<StatueText>,
-            Without<OrderText>,
+            With<EnemyStatusText>,
+            Without<PlayerStatusText>,
+            Without<ClockText>,
+            Without<SandboxStatusText>,
         ),
     >,
-    mut statue_text: Single<
+    mut clock_text: Single<
         &mut Text,
         (
-            With<StatueText>,
-            Without<GoldText>,
-            Without<PopulationText>,
-            Without<OrderText>,
+            With<ClockText>,
+            Without<PlayerStatusText>,
+            Without<EnemyStatusText>,
+            Without<SandboxStatusText>,
         ),
     >,
-    mut order_text: Single<
+    mut sandbox_text: Single<
         &mut Text,
         (
-            With<OrderText>,
-            Without<GoldText>,
-            Without<PopulationText>,
-            Without<StatueText>,
+            With<SandboxStatusText>,
+            Without<PlayerStatusText>,
+            Without<EnemyStatusText>,
+            Without<ClockText>,
         ),
     >,
 ) {
-    gold.0 = format!("GOLD  {}", economy.player_gold);
-    pop.0 = format!(
-        "POP  {}/{}",
-        economy.player_population, economy.population_limit
-    );
-    order_text.0 = format!("ORDER  {:?}", order.0);
+    let HudData {
+        economy,
+        orders,
+        settings,
+        clock,
+        training,
+    } = data;
     let mut player = 0.0;
     let mut enemy = 0.0;
     for (team, h) in &statues {
@@ -254,7 +454,61 @@ fn update_hud(
             enemy = h.current
         }
     }
-    statue_text.0 = format!("STATUES  {:.0}  /  {:.0}", player, enemy);
+    player_text.0 = format!(
+        "YOU  G {} | P {}/{} | HP {:.0} | {:?}{}",
+        economy.player_gold,
+        economy.player_population,
+        economy.population_limit,
+        player,
+        orders.player,
+        training_summary(&training, Team::Player),
+    );
+    enemy_text.0 = format!(
+        "ENEMY  G {} | P {}/{} | HP {:.0} | {:?}{}",
+        economy.enemy_gold,
+        economy.enemy_population,
+        economy.population_limit,
+        enemy,
+        orders.enemy,
+        training_summary(&training, Team::Enemy),
+    );
+    let total_seconds = clock.elapsed_seconds.floor() as u64;
+    clock_text.0 = format!("{:02}:{:02}", total_seconds / 60, total_seconds % 60);
+    sandbox_text.0 = if settings.is_sandbox {
+        format!(
+            "{}  |  COSTS [{}]  |  TRAIN TIME [{}]  |  POP LIMIT {}",
+            if settings.paused { "PAUSED" } else { "RUNNING" },
+            if settings.charge_costs { "x" } else { " " },
+            if settings.training_time_enabled {
+                "x"
+            } else {
+                " "
+            },
+            economy.population_limit,
+        )
+    } else {
+        String::new()
+    };
+}
+
+fn training_summary(queue: &TrainingQueue, team: Team) -> String {
+    let entries = [
+        (UnitKind::Miner, "M"),
+        (UnitKind::Swordsman, "S"),
+        (UnitKind::Archer, "A"),
+    ]
+    .into_iter()
+    .filter_map(|(kind, label)| {
+        queue
+            .remaining(team, kind)
+            .map(|seconds| format!("{label} {:.1}s", seconds))
+    })
+    .collect::<Vec<_>>();
+    if entries.is_empty() {
+        String::new()
+    } else {
+        format!(" | TRAIN {}", entries.join(" "))
+    }
 }
 
 fn setup_results(mut commands: Commands, result: Res<BattleResult>) {

@@ -10,6 +10,9 @@ The game is inspired by the simple silhouettes, tug-of-war battlefield, and mix 
 - Issue **attack**, **defend**, or **retreat** orders to the whole army.
 - Press <kbd>Tab</kbd> to take direct control of a swordsman or archer.
 - Defeat the enemy by reducing its statue's health to zero.
+- Use **Sandbox** mode to train units and issue orders for either team, change
+  the population cap, pause the simulation, and toggle training costs or times.
+  Sandbox starts paused with costs and training time disabled.
 
 | Action | Keyboard |
 | --- | --- |
@@ -21,7 +24,10 @@ The game is inspired by the simple silhouettes, tug-of-war battlefield, and mix 
 | Release controlled unit | <kbd>Esc</kbd> |
 | Pan camera (when no unit is controlled) | Swipe on touchscreens, sideways mouse/trackpad scroll, or left/right arrow keys |
 
-The HUD buttons provide mouse controls for training and army orders.
+The compact HUD includes the battle timer, both economies and statue health,
+active training countdowns, and mouse controls for training and army orders.
+Only one unit of each type can train for a team at once. Unit training times,
+like the other balance values, are configured in `config/game_config.ron`.
 
 ## Local setup
 

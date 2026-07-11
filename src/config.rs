@@ -48,6 +48,7 @@ pub struct UnitConfigs {
 #[derive(Debug, Clone, Deserialize)]
 pub struct MinerConfig {
     pub cost: u32,
+    pub training_seconds: f32,
     pub health: f32,
     pub speed: f32,
     pub capacity: u32,
@@ -59,6 +60,7 @@ pub struct MinerConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct CombatUnitConfig {
     pub cost: u32,
+    pub training_seconds: f32,
     pub health: f32,
     pub speed: f32,
     pub damage: f32,
@@ -82,6 +84,7 @@ pub struct CombatConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct ArcherConfig {
     pub cost: u32,
+    pub training_seconds: f32,
     pub health: f32,
     pub speed: f32,
     pub damage: f32,

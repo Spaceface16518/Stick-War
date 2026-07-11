@@ -27,27 +27,29 @@ impl Plugin for BattlePlugin {
                 BattleSet::Presentation,
             )
                 .chain()
-                .run_if(in_state(AppState::Battle)),
+                .run_if(in_state(GameplayState::Active)),
         )
         .add_systems(
-            OnEnter(AppState::Battle),
+            OnEnter(GameplayState::Active),
             (setup_battle, reset_battle_camera).chain(),
         )
-        .add_systems(OnExit(AppState::Battle), cleanup_battle)
+        .add_systems(OnExit(GameplayState::Active), cleanup_battle)
         .add_systems(
             Update,
-            (keyboard_orders, cycle_control).in_set(BattleSet::Input),
+            (keyboard_orders, cycle_control, process_training_requests).in_set(BattleSet::Input),
         )
         .add_systems(
             Update,
             (
+                tick_battle_clock,
                 passive_income,
                 enemy_controller,
-                process_training,
+                tick_training,
                 acquire_targets,
             )
                 .chain()
-                .in_set(BattleSet::Decisions),
+                .in_set(BattleSet::Decisions)
+                .run_if(simulation_running),
         )
         .add_systems(
             Update,
@@ -59,17 +61,21 @@ impl Plugin for BattlePlugin {
                 move_projectiles,
             )
                 .chain()
-                .in_set(BattleSet::Movement),
+                .in_set(BattleSet::Movement)
+                .run_if(simulation_running),
         )
         .add_systems(
             Update,
-            (automatic_attacks, controlled_attack).in_set(BattleSet::Combat),
+            (automatic_attacks, controlled_attack)
+                .in_set(BattleSet::Combat)
+                .run_if(simulation_running),
         )
         .add_systems(
             Update,
             (apply_damage, process_deaths, check_victory)
                 .chain()
-                .in_set(BattleSet::Consequences),
+                .in_set(BattleSet::Consequences)
+                .run_if(simulation_running),
         )
         .add_systems(
             Update,
@@ -80,11 +86,21 @@ impl Plugin for BattlePlugin {
                 animate_weapons,
                 update_gold_sacks,
                 tick_timed_effects,
-                update_battle_camera,
             )
-                .in_set(BattleSet::Presentation),
+                .in_set(BattleSet::Presentation)
+                .run_if(simulation_running),
+        );
+        app.add_systems(
+            Update,
+            update_battle_camera
+                .in_set(BattleSet::Presentation)
+                .run_if(in_state(GameplayState::Active)),
         );
     }
+}
+
+fn simulation_running(settings: Option<Res<SandboxSettings>>) -> bool {
+    settings.is_none_or(|settings| !settings.paused)
 }
 
 fn reset_battle_camera(
@@ -102,7 +118,11 @@ fn reset_battle_camera(
 }
 
 fn update_battle_camera(
-    input: (Res<ButtonInput<KeyCode>>, Res<Touches>),
+    input: (
+        Res<ButtonInput<KeyCode>>,
+        Res<Touches>,
+        Res<SandboxSettings>,
+    ),
     mut mouse_wheel: MessageReader<MouseWheel>,
     time: Res<Time>,
     c: Res<GameConfig>,
@@ -110,7 +130,7 @@ fn update_battle_camera(
     controlled: Query<&Transform, (With<Controlled>, Without<BattleCamera>)>,
     mut camera: Single<&mut Transform, With<BattleCamera>>,
 ) {
-    let (keys, touches) = input;
+    let (keys, touches, settings) = input;
     let scroll = mouse_wheel
         .read()
         .map(|event| {
@@ -136,7 +156,7 @@ fn update_battle_camera(
     } else {
         0.0
     };
-    let desired = if let Some(unit) = controlled.iter().next() {
+    let desired = if let Some(unit) = controlled.iter().next().filter(|_| !settings.paused) {
         let offset = unit.translation.x - camera.translation.x;
         if offset.abs() > c.camera.follow_dead_zone {
             unit.translation.x - offset.signum() * c.camera.follow_dead_zone
@@ -169,6 +189,7 @@ fn update_battle_camera(
 
 fn setup_battle(
     mut commands: Commands,
+    state: Res<State<AppState>>,
     c: Res<GameConfig>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
@@ -180,7 +201,21 @@ fn setup_battle(
         enemy_population: c.economy.starting_population,
         population_limit: c.economy.population_limit,
     });
-    commands.insert_resource(PlayerArmyOrder(ArmyOrder::Defend));
+    let sandbox = *state.get() == AppState::Sandbox;
+    commands.insert_resource(ArmyOrders {
+        player: ArmyOrder::Defend,
+        enemy: ArmyOrder::Attack,
+    });
+    commands.insert_resource(SandboxSettings {
+        is_sandbox: sandbox,
+        paused: sandbox,
+        charge_costs: !sandbox,
+        training_time_enabled: !sandbox,
+    });
+    commands.insert_resource(TrainingQueue::default());
+    commands.insert_resource(BattleClock {
+        elapsed_seconds: 0.0,
+    });
     commands.insert_resource(PassiveIncome(Timer::from_seconds(
         c.economy.passive_income_seconds,
         TimerMode::Repeating,
@@ -226,10 +261,17 @@ fn cleanup_battle(mut commands: Commands, entities: Query<Entity, With<BattleEnt
         commands.entity(entity).despawn();
     }
     commands.remove_resource::<Economy>();
-    commands.remove_resource::<PlayerArmyOrder>();
+    commands.remove_resource::<ArmyOrders>();
+    commands.remove_resource::<SandboxSettings>();
+    commands.remove_resource::<TrainingQueue>();
+    commands.remove_resource::<BattleClock>();
     commands.remove_resource::<PassiveIncome>();
     commands.remove_resource::<EnemyController>();
     commands.remove_resource::<CombatRandom>();
+}
+
+fn tick_battle_clock(time: Res<Time>, mut clock: ResMut<BattleClock>) {
+    clock.elapsed_seconds += time.delta_secs();
 }
 
 fn passive_income(
@@ -245,7 +287,7 @@ fn passive_income(
 
 fn keyboard_orders(
     keys: Res<ButtonInput<KeyCode>>,
-    mut order: ResMut<PlayerArmyOrder>,
+    mut orders: ResMut<ArmyOrders>,
     mut train: MessageWriter<TrainUnitRequest>,
 ) {
     if keys.just_pressed(KeyCode::KeyM) {
@@ -267,13 +309,13 @@ fn keyboard_orders(
         });
     }
     if keys.just_pressed(KeyCode::Digit1) {
-        order.0 = ArmyOrder::Attack;
+        orders.player = ArmyOrder::Attack;
     }
     if keys.just_pressed(KeyCode::Digit2) {
-        order.0 = ArmyOrder::Defend;
+        orders.player = ArmyOrder::Defend;
     }
     if keys.just_pressed(KeyCode::Digit3) {
-        order.0 = ArmyOrder::Retreat;
+        orders.player = ArmyOrder::Retreat;
     }
 }
 
@@ -317,12 +359,16 @@ fn cycle_control(
 }
 
 fn enemy_controller(
+    state: Res<State<AppState>>,
     time: Res<Time>,
     c: Res<GameConfig>,
     mut ai: ResMut<EnemyController>,
     units: Query<(&Team, &UnitKind), With<Unit>>,
     mut train: MessageWriter<TrainUnitRequest>,
 ) {
+    if *state.get() == AppState::Sandbox {
+        return;
+    }
     if !ai.spawn_timer.tick(time.delta()).just_finished() {
         return;
     }
@@ -351,31 +397,67 @@ fn enemy_controller(
     });
 }
 
-fn process_training(
-    mut commands: Commands,
+fn process_training_requests(
     mut requests: MessageReader<TrainUnitRequest>,
     mut economy: ResMut<Economy>,
+    c: Res<GameConfig>,
+    settings: Res<SandboxSettings>,
+    mut queue: ResMut<TrainingQueue>,
+) {
+    for request in requests.read() {
+        if queue.contains(request.team, request.kind)
+            || !try_reserve_unit(
+                request.team,
+                request.kind,
+                &mut economy,
+                &c,
+                settings.charge_costs,
+            )
+        {
+            continue;
+        }
+        let duration = if settings.training_time_enabled {
+            training_seconds(request.kind, &c)
+        } else {
+            0.0
+        };
+        queue.0.push(ActiveTraining {
+            team: request.team,
+            kind: request.kind,
+            timer: Timer::from_seconds(duration.max(0.0), TimerMode::Once),
+        });
+    }
+}
+
+fn tick_training(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut queue: ResMut<TrainingQueue>,
     c: Res<GameConfig>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    for request in requests.read() {
-        if !try_purchase_unit(request.team, request.kind, &mut economy, &c) {
-            continue;
+    let mut completed = Vec::new();
+    for (index, training) in queue.0.iter_mut().enumerate() {
+        if training.timer.tick(time.delta()).is_finished() {
+            completed.push(index);
         }
+    }
+    for index in completed.into_iter().rev() {
+        let training = queue.0.swap_remove(index);
         let pos = Vec2::new(
-            statue_x(request.team, &c)
-                + request.team.direction() * c.formation.trained_unit_spawn_offset,
+            statue_x(training.team, &c)
+                + training.team.direction() * c.formation.trained_unit_spawn_offset,
             c.battlefield.ground_y + c.formation.unit_ground_offset,
         );
-        match request.kind {
+        match training.kind {
             UnitKind::Miner => {
                 spawn_miner(
                     &mut commands,
                     &mut meshes,
                     &mut materials,
                     &c,
-                    request.team,
+                    training.team,
                     pos,
                 );
             }
@@ -385,7 +467,7 @@ fn process_training(
                     &mut meshes,
                     &mut materials,
                     &c,
-                    request.team,
+                    training.team,
                     pos,
                 );
             }
@@ -395,7 +477,7 @@ fn process_training(
                     &mut meshes,
                     &mut materials,
                     &c,
-                    request.team,
+                    training.team,
                     pos,
                 );
             }
@@ -406,7 +488,7 @@ fn process_training(
 fn move_miners(
     time: Res<Time>,
     c: Res<GameConfig>,
-    order: Res<PlayerArmyOrder>,
+    orders: Res<ArmyOrders>,
     mut economy: ResMut<Economy>,
     mut miners: Query<(
         &Team,
@@ -418,7 +500,7 @@ fn move_miners(
     )>,
 ) {
     for (team, speed, mut transform, mut state, mut timer, mut carried) in &mut miners {
-        if *team == Team::Player && order.0 == ArmyOrder::Retreat {
+        if orders.get(*team) == ArmyOrder::Retreat {
             transform.translation.x = step_toward(
                 transform.translation.x,
                 retreat_x(*team, &c),
@@ -460,7 +542,7 @@ fn move_miners(
 fn acquire_targets(
     mut commands: Commands,
     c: Res<GameConfig>,
-    order: Res<PlayerArmyOrder>,
+    orders: Res<ArmyOrders>,
     attackers: Query<
         (
             Entity,
@@ -484,11 +566,7 @@ fn acquire_targets(
             }
             continue;
         }
-        let army_order = if *team == Team::Enemy {
-            ArmyOrder::Attack
-        } else {
-            order.0
-        };
+        let army_order = orders.get(*team);
         if army_order == ArmyOrder::Retreat {
             if target.is_some() {
                 commands.entity(entity).remove::<CurrentTarget>();
@@ -559,7 +637,7 @@ fn move_combat_units(
     mut commands: Commands,
     time: Res<Time>,
     c: Res<GameConfig>,
-    order: Res<PlayerArmyOrder>,
+    orders: Res<ArmyOrders>,
     mut queries: ParamSet<(
         Query<
             (
@@ -603,11 +681,7 @@ fn move_combat_units(
     for (entity, team, speed, mut transform, attack, mode, kind, mut state, target) in
         &mut queries.p1()
     {
-        let army_order = if *team == Team::Enemy {
-            ArmyOrder::Attack
-        } else {
-            order.0
-        };
+        let army_order = orders.get(*team);
         let combat_slot = snapshot
             .iter()
             .filter(|other| {
@@ -724,7 +798,7 @@ fn automatic_attacks(
     time: Res<Time>,
     mut messages: MessageWriter<DamageMessage>,
     targets: Query<(&Transform, Option<&MotionEstimate>, Has<Statue>)>,
-    order: Res<PlayerArmyOrder>,
+    orders: Res<ArmyOrders>,
     c: Res<GameConfig>,
     mut random: ResMut<CombatRandom>,
     mut units: Query<
@@ -741,7 +815,7 @@ fn automatic_attacks(
     >,
 ) {
     for (owner, team, transform, target, mode, kind, mut attack) in &mut units {
-        if *team == Team::Player && order.0 == ArmyOrder::Retreat {
+        if orders.get(*team) == ArmyOrder::Retreat {
             continue;
         }
         let Ok((target_transform, target_motion, target_is_statue)) = targets.get(target.0) else {
@@ -1065,10 +1139,14 @@ fn process_deaths(
 }
 
 fn check_victory(
+    state: Res<State<AppState>>,
     mut commands: Commands,
     statues: Query<(&Team, &Health), With<Statue>>,
     mut next: ResMut<NextState<AppState>>,
 ) {
+    if *state.get() == AppState::Sandbox {
+        return;
+    }
     for (team, health) in &statues {
         if health.current <= 0.0 {
             commands.insert_resource(if *team == Team::Enemy {
