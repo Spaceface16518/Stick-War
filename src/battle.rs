@@ -75,6 +75,9 @@ impl Plugin for BattlePlugin {
                 update_health_bars,
                 update_selection_markers,
                 animate_walking,
+                animate_weapons,
+                update_gold_sacks,
+                tick_timed_effects,
                 update_battle_camera,
             )
                 .in_set(BattleSet::Presentation),
@@ -156,7 +159,7 @@ fn setup_battle(
         spawn_timer: Timer::from_seconds(2.0, TimerMode::Repeating),
         next_unit: UnitKind::Miner,
     });
-    spawn_battlefield(&mut commands, &c);
+    spawn_battlefield(&mut commands, &mut meshes, &mut materials, &c);
     for team in [Team::Player, Team::Enemy] {
         spawn_statue(
             &mut commands,
@@ -778,6 +781,13 @@ fn move_projectiles(
                 target,
                 amount: projectile.damage,
             });
+            commands.spawn((
+                BattleEntity,
+                TimedEffect(Timer::from_seconds(0.18, TimerMode::Once)),
+                Sprite::from_color(Color::srgba(1.0, 0.78, 0.2, 0.9), Vec2::new(28.0, 28.0)),
+                Transform::from_xyz(transform.translation.x, transform.translation.y, 9.0)
+                    .with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_4)),
+            ));
             commands.entity(entity).despawn();
         } else if transform.translation.x.abs() > c.battlefield_half_width + 100.0 {
             commands.entity(entity).despawn();
@@ -785,10 +795,24 @@ fn move_projectiles(
     }
 }
 
-fn apply_damage(mut messages: MessageReader<DamageMessage>, mut health: Query<&mut Health>) {
+fn apply_damage(
+    mut commands: Commands,
+    mut messages: MessageReader<DamageMessage>,
+    mut health: Query<(&mut Health, &Transform)>,
+) {
     for message in messages.read() {
-        if let Ok(mut h) = health.get_mut(message.target) {
+        if let Ok((mut h, transform)) = health.get_mut(message.target) {
             h.current = apply_damage_value(h.current, message.amount);
+            commands.spawn((
+                BattleEntity,
+                TimedEffect(Timer::from_seconds(0.12, TimerMode::Once)),
+                Sprite::from_color(Color::srgba(1.0, 0.18, 0.12, 0.65), Vec2::new(48.0, 92.0)),
+                Transform::from_xyz(
+                    transform.translation.x,
+                    transform.translation.y + 30.0,
+                    10.0,
+                ),
+            ));
         }
     }
 }

@@ -65,10 +65,10 @@ fn text_style(size: f32) -> TextFont {
 }
 fn button_node() -> Node {
     Node {
-        padding: UiRect::axes(px(22), px(10)),
-        margin: UiRect::all(px(5)),
+        padding: UiRect::axes(px(14), px(8)),
+        margin: UiRect::all(px(3)),
         justify_content: JustifyContent::Center,
-        min_width: px(170),
+        min_width: px(132),
         ..default()
     }
 }
@@ -147,7 +147,7 @@ fn hud_button(parent: &mut ChildSpawnerCommands, label: &str, kind: BattleButton
 
 fn setup_hud(mut commands: Commands) {
     commands.spawn((BattleEntity,Node{position_type:PositionType::Absolute,top:px(0),left:px(0),width:percent(100),height:percent(100),flex_direction:FlexDirection::Column,justify_content:JustifyContent::SpaceBetween,..default()},children![
-        (Node{width:percent(100),padding:UiRect::all(px(12)),justify_content:JustifyContent::SpaceBetween,..default()},BackgroundColor(Color::srgba(0.03,0.04,0.07,0.9)),children![
+        (Node{width:percent(100),padding:UiRect::all(px(10)),justify_content:JustifyContent::SpaceAround,flex_wrap:FlexWrap::Wrap,column_gap:px(16),row_gap:px(4),..default()},BackgroundColor(Color::srgba(0.03,0.04,0.07,0.9)),children![
             (GoldText,Text::new("Gold"),text_style(20.0),TextColor(Color::srgb(1.0,0.82,0.2))),
             (PopulationText,Text::new("Population"),text_style(20.0),TextColor(Color::WHITE)),
             (StatueText,Text::new("Statues"),text_style(20.0),TextColor(Color::WHITE)),
@@ -155,7 +155,7 @@ fn setup_hud(mut commands: Commands) {
         ]),
         (Node{width:percent(100),padding:UiRect::all(px(8)),flex_direction:FlexDirection::Column,align_items:AlignItems::Center,..default()},children![
             (Node{justify_content:JustifyContent::Center,flex_wrap:FlexWrap::Wrap,..default()},children![]),
-            (Text::new("M/S/R train  |  1 Attack  2 Defend  3 Retreat  |  Tab control  A/D move  Space attack  Esc release"),text_style(15.0),TextColor(Color::WHITE),Node{margin:UiRect::top(px(5)),..default()})
+            (Text::new("M/S/R train  |  1 Attack  2 Defend  3 Retreat  |  Tab control  A/D or arrows move  Space attack  Esc release"),text_style(14.0),TextColor(Color::WHITE),TextLayout::justify(Justify::Center),Node{margin:UiRect::top(px(4)),padding:UiRect::horizontal(px(8)),max_width:percent(100),..default()})
         ])
     ])).with_children(|root| {
         let mut row=root.spawn((Node{position_type:PositionType::Absolute,bottom:px(42),left:percent(0),width:percent(100),justify_content:JustifyContent::Center,flex_wrap:FlexWrap::Wrap,..default()},));

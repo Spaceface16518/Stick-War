@@ -82,6 +82,14 @@ pub struct HealthBarFill {
 #[derive(Component)]
 pub struct SelectionMarker;
 #[derive(Component)]
+pub struct WeaponVisual {
+    pub kind: UnitKind,
+}
+#[derive(Component)]
+pub struct GoldSackVisual;
+#[derive(Component)]
+pub struct TimedEffect(pub Timer);
+#[derive(Component)]
 pub struct Limb {
     pub kind: LimbKind,
     pub rest_angle: f32,

@@ -9,7 +9,12 @@ pub fn team_color(team: Team) -> Color {
     }
 }
 
-pub fn spawn_battlefield(commands: &mut Commands, config: &GameConfig) {
+pub fn spawn_battlefield(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<ColorMaterial>,
+    config: &GameConfig,
+) {
     commands.spawn((
         BattleEntity,
         Sprite::from_color(Color::srgb(0.48, 0.72, 0.9), Vec2::new(3400.0, 900.0)),
@@ -17,13 +22,47 @@ pub fn spawn_battlefield(commands: &mut Commands, config: &GameConfig) {
     ));
     commands.spawn((
         BattleEntity,
-        Sprite::from_color(Color::srgb(0.18, 0.45, 0.18), Vec2::new(3400.0, 260.0)),
+        Sprite::from_color(Color::srgb(0.08, 0.24, 0.16), Vec2::new(3400.0, 80.0)),
+        Transform::from_xyz(0.0, -40.0, -18.0),
+    ));
+    for (x, scale, color) in [
+        (-1100.0, Vec2::new(9.0, 2.2), Color::srgb(0.28, 0.48, 0.48)),
+        (0.0, Vec2::new(12.0, 2.8), Color::srgb(0.22, 0.42, 0.4)),
+        (1200.0, Vec2::new(10.0, 2.4), Color::srgb(0.26, 0.46, 0.44)),
+    ] {
+        commands.spawn((
+            BattleEntity,
+            Mesh2d(meshes.add(RegularPolygon::new(70.0, 3))),
+            MeshMaterial2d(materials.add(color)),
+            Transform::from_xyz(x, config.ground_y + 185.0, -17.0)
+                .with_scale(Vec3::new(scale.x, scale.y, 1.0)),
+        ));
+    }
+    commands.spawn((
+        BattleEntity,
+        Mesh2d(meshes.add(Circle::new(58.0))),
+        MeshMaterial2d(materials.add(Color::srgb(1.0, 0.82, 0.28))),
+        Transform::from_xyz(-1150.0, 185.0, -16.0),
+    ));
+    commands.spawn((
+        BattleEntity,
+        Sprite::from_color(Color::srgb(0.2, 0.5, 0.2), Vec2::new(3400.0, 190.0)),
         Transform::from_xyz(0.0, config.ground_y - 120.0, -10.0),
     ));
     commands.spawn((
         BattleEntity,
         Sprite::from_color(Color::srgb(0.12, 0.28, 0.1), Vec2::new(3400.0, 8.0)),
         Transform::from_xyz(0.0, config.ground_y - 2.0, -9.0),
+    ));
+    commands.spawn((
+        BattleEntity,
+        Sprite::from_color(Color::srgb(0.26, 0.16, 0.09), Vec2::new(3400.0, 55.0)),
+        Transform::from_xyz(0.0, config.ground_y - 210.0, -8.0),
+    ));
+    commands.spawn((
+        BattleEntity,
+        Sprite::from_color(Color::srgb(0.12, 0.09, 0.07), Vec2::new(3400.0, 22.0)),
+        Transform::from_xyz(0.0, config.ground_y - 250.0, -7.0),
     ));
 }
 
@@ -85,5 +124,63 @@ pub fn animate_walking(
         };
         let angle = limb.rest_angle + if moving { swing * direction } else { 0.0 };
         transform.rotation = Quat::from_rotation_z(angle);
+    }
+}
+
+pub fn animate_weapons(
+    roots: Query<(&Attack, &UnitKind)>,
+    mut weapons: Query<(&ChildOf, &WeaponVisual, &mut Transform)>,
+) {
+    for (parent, weapon, mut transform) in &mut weapons {
+        let Ok((attack, kind)) = roots.get(parent.parent()) else {
+            continue;
+        };
+        let progress = attack.cooldown.fraction();
+        match weapon.kind {
+            UnitKind::Swordsman => {
+                let swing = if *kind == UnitKind::Swordsman && progress < 0.45 {
+                    -1.35 + progress * 4.5
+                } else {
+                    -0.35
+                };
+                transform.rotation = Quat::from_rotation_z(swing);
+            }
+            UnitKind::Archer => {
+                transform.scale.x = 0.45 + (1.0 - progress).max(0.0) * 0.18;
+            }
+            UnitKind::Miner => {}
+        }
+    }
+}
+
+pub fn update_gold_sacks(
+    miners: Query<&CarriedGold>,
+    mut sacks: Query<(&ChildOf, &mut Visibility), With<GoldSackVisual>>,
+) {
+    for (parent, mut visibility) in &mut sacks {
+        *visibility = miners
+            .get(parent.parent())
+            .map(|gold| {
+                if gold.0 > 0 {
+                    Visibility::Visible
+                } else {
+                    Visibility::Hidden
+                }
+            })
+            .unwrap_or(Visibility::Hidden);
+    }
+}
+
+pub fn tick_timed_effects(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut effects: Query<(Entity, &mut TimedEffect, &mut Sprite)>,
+) {
+    for (entity, mut timer, mut sprite) in &mut effects {
+        timer.0.tick(time.delta());
+        sprite.color = sprite.color.with_alpha(1.0 - timer.0.fraction());
+        if timer.0.is_finished() {
+            commands.entity(entity).despawn();
+        }
     }
 }
