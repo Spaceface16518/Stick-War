@@ -1,5 +1,5 @@
+pub use crate::config::{GameConfig, load_game_config};
 use bevy::prelude::*;
-use serde::Deserialize;
 
 #[derive(States, Debug, Clone, Copy, Default, Eq, PartialEq, Hash)]
 pub enum AppState {
@@ -80,6 +80,11 @@ pub struct Projectile {
     pub damage: f32,
     pub velocity: Vec2,
     pub lifetime_remaining: f32,
+}
+#[derive(Component, Debug, Clone, Copy)]
+pub struct MotionEstimate {
+    pub previous_position: Vec2,
+    pub velocity: Vec2,
 }
 #[derive(Component)]
 pub struct CurrentTarget(pub Entity);
@@ -180,89 +185,6 @@ impl Economy {
     }
 }
 
-#[derive(Resource, Debug, Clone, Deserialize)]
-pub struct GameConfig {
-    pub battlefield_half_width: f32,
-    pub ground_y: f32,
-    pub player_statue_x: f32,
-    pub enemy_statue_x: f32,
-    pub player_mine_x: f32,
-    pub enemy_mine_x: f32,
-    pub player_starting_gold: u32,
-    pub enemy_starting_gold: u32,
-    pub starting_population: u32,
-    pub population_limit: u32,
-    pub miner_cost: u32,
-    pub miner_health: f32,
-    pub miner_speed: f32,
-    pub miner_capacity: u32,
-    pub mining_duration: f32,
-    pub passive_income_amount: u32,
-    pub passive_income_seconds: f32,
-    pub swordsman_cost: u32,
-    pub swordsman_health: f32,
-    pub swordsman_speed: f32,
-    pub swordsman_damage: f32,
-    pub swordsman_range: f32,
-    pub swordsman_attack_seconds: f32,
-    pub swordsman_activation_range: f32,
-    pub archer_cost: u32,
-    pub archer_health: f32,
-    pub archer_speed: f32,
-    pub archer_damage: f32,
-    pub archer_range: f32,
-    pub archer_attack_seconds: f32,
-    pub archer_activation_range: f32,
-    pub archer_preferred_range_factor: f32,
-    pub archer_backpedal_range_factor: f32,
-    pub arrow_horizontal_speed: f32,
-    pub arrow_vertical_speed: f32,
-    pub arrow_gravity: f32,
-    pub arrow_lifetime_seconds: f32,
-    pub arrow_collision_radius: f32,
-    pub arrow_spawn_forward: f32,
-    pub arrow_spawn_height: f32,
-    pub character_collision_half_width: f32,
-    pub character_collision_bottom: f32,
-    pub character_collision_height: f32,
-    pub statue_collision_half_width: f32,
-    pub statue_collision_bottom: f32,
-    pub statue_collision_height: f32,
-    pub deposit_collision_half_width: f32,
-    pub deposit_collision_bottom: f32,
-    pub deposit_collision_height: f32,
-    pub statue_health: f32,
-    pub defense_radius: f32,
-    pub retreat_offset: f32,
-    pub formation_spacing: f32,
-    pub swordsman_defense_offset: f32,
-    pub archer_defense_offset: f32,
-    pub archer_formation_spacing_factor: f32,
-    pub unit_spawn_offset: f32,
-    pub initial_miner_spawn_offset: f32,
-    pub unit_ground_offset: f32,
-    pub miner_return_offset: f32,
-    pub formation_arrival_tolerance: f32,
-    pub defense_line_offset: f32,
-    pub enemy_spawn_seconds: f32,
-    pub enemy_desired_miners: usize,
-    pub enemy_swordsmen_per_archer: usize,
-    pub camera_view_height: f32,
-    pub camera_pan_speed: f32,
-    pub camera_dead_zone: f32,
-}
-impl Default for GameConfig {
-    fn default() -> Self {
-        load_game_config()
-    }
-}
-
-pub fn load_game_config() -> GameConfig {
-    let source = std::fs::read_to_string("config/game_config.ron")
-        .unwrap_or_else(|_| include_str!("../config/game_config.ron").to_owned());
-    ron::from_str(&source).expect("config/game_config.ron must contain a valid GameConfig")
-}
-
 #[derive(Message)]
 pub struct TrainUnitRequest {
     pub team: Team,
@@ -278,26 +200,28 @@ pub struct EnemyController {
     pub spawn_timer: Timer,
     pub next_unit: UnitKind,
 }
+#[derive(Resource)]
+pub struct ProjectileRandom(pub u64);
 
 pub fn statue_x(team: Team, c: &GameConfig) -> f32 {
     if team == Team::Player {
-        c.player_statue_x
+        c.battlefield.player.statue_x
     } else {
-        c.enemy_statue_x
+        c.battlefield.enemy.statue_x
     }
 }
 pub fn mine_x(team: Team, c: &GameConfig) -> f32 {
     if team == Team::Player {
-        c.player_mine_x
+        c.battlefield.player.mine_x
     } else {
-        c.enemy_mine_x
+        c.battlefield.enemy.mine_x
     }
 }
 pub fn defense_x(team: Team, c: &GameConfig) -> f32 {
-    mine_x(team, c) + team.direction() * c.defense_line_offset
+    mine_x(team, c) + team.direction() * c.ai.defense_line_offset
 }
 pub fn retreat_x(team: Team, c: &GameConfig) -> f32 {
-    statue_x(team, c) - team.direction() * c.retreat_offset
+    statue_x(team, c) - team.direction() * c.formation.retreat_offset
 }
 pub fn formation_x(
     team: Team,
@@ -308,16 +232,18 @@ pub fn formation_x(
     c: &GameConfig,
 ) -> f32 {
     if order == ArmyOrder::Retreat {
-        return retreat_x(team, c) - team.direction() * combat_slot as f32 * c.formation_spacing;
+        return retreat_x(team, c) - team.direction() * combat_slot as f32 * c.formation.spacing;
     }
     if order == ArmyOrder::Attack {
         return statue_x(team.opponent(), c);
     }
     let front_offset = match kind {
-        UnitKind::Swordsman => c.swordsman_defense_offset + role_slot as f32 * c.formation_spacing,
+        UnitKind::Swordsman => {
+            c.formation.swordsman_defense_offset + role_slot as f32 * c.formation.spacing
+        }
         UnitKind::Archer => {
-            c.archer_defense_offset
-                + role_slot as f32 * c.formation_spacing * c.archer_formation_spacing_factor
+            c.formation.archer_defense_offset
+                + role_slot as f32 * c.formation.spacing * c.formation.archer_spacing_factor
         }
         UnitKind::Miner => 0.0,
     };
@@ -325,7 +251,7 @@ pub fn formation_x(
 }
 pub fn target_distance(kind: UnitKind, attack_range: f32, c: &GameConfig) -> f32 {
     if kind == UnitKind::Archer {
-        attack_range * c.archer_preferred_range_factor
+        attack_range * c.units.archer.preferred_range_factor
     } else {
         attack_range
     }
@@ -333,12 +259,55 @@ pub fn target_distance(kind: UnitKind, attack_range: f32, c: &GameConfig) -> f32
 pub fn activation_range(kind: UnitKind, c: &GameConfig) -> f32 {
     match kind {
         UnitKind::Miner => 0.0,
-        UnitKind::Swordsman => c.swordsman_activation_range,
-        UnitKind::Archer => c.archer_activation_range,
+        UnitKind::Swordsman => c.units.swordsman.activation_range,
+        UnitKind::Archer => c.units.archer.activation_range,
     }
 }
 pub fn projectile_can_hit(projectile_team: Team, object_team: Team) -> bool {
     projectile_team != object_team
+}
+pub fn ballistic_launch_velocity(
+    origin: Vec2,
+    target: Vec2,
+    target_velocity: Vec2,
+    horizontal_speed: f32,
+    gravity: f32,
+    max_flight_time: f32,
+    variation: Vec2,
+    speed_variation: f32,
+    vertical_variation: f32,
+) -> Vec2 {
+    let base_direction = (target.x - origin.x).signum();
+    let mut flight_time =
+        ((target.x - origin.x).abs() / horizontal_speed.max(1.0)).clamp(0.05, max_flight_time);
+    for _ in 0..2 {
+        let predicted_x = target.x + target_velocity.x * flight_time;
+        flight_time = ((predicted_x - origin.x).abs() / horizontal_speed.max(1.0))
+            .clamp(0.05, max_flight_time);
+    }
+    let predicted = target + target_velocity * flight_time;
+    let direction = (predicted.x - origin.x).signum();
+    let direction = if direction == 0.0 {
+        base_direction
+    } else {
+        direction
+    };
+    let varied_speed = horizontal_speed * (1.0 + variation.x * speed_variation);
+    let velocity_x = direction * varied_speed;
+    let relative_x_speed = (velocity_x - target_velocity.x).abs().max(1.0);
+    let intercept_time =
+        ((predicted.x - origin.x).abs() / relative_x_speed).clamp(0.05, max_flight_time);
+    let intercept_y = target.y + target_velocity.y * intercept_time;
+    let velocity_y = (intercept_y - origin.y + gravity * intercept_time * intercept_time * 0.5)
+        / intercept_time
+        + variation.y * vertical_variation;
+    Vec2::new(velocity_x, velocity_y)
+}
+
+pub fn next_projectile_variation(state: &mut u64) -> f32 {
+    *state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+    let normalized = ((*state >> 40) as u32) as f32 / ((1_u32 << 24) - 1) as f32;
+    normalized * 2.0 - 1.0
 }
 pub fn projectile_step(position: Vec2, velocity: Vec2, gravity: f32, dt: f32) -> (Vec2, Vec2) {
     let next = Vec2::new(
@@ -406,9 +375,9 @@ pub fn try_purchase_unit(
     c: &GameConfig,
 ) -> bool {
     let cost = match kind {
-        UnitKind::Miner => c.miner_cost,
-        UnitKind::Swordsman => c.swordsman_cost,
-        UnitKind::Archer => c.archer_cost,
+        UnitKind::Miner => c.units.miner.cost,
+        UnitKind::Swordsman => c.units.swordsman.cost,
+        UnitKind::Archer => c.units.archer.cost,
     };
     if economy.gold(team) < cost || economy.population(team) >= economy.population_limit {
         return false;
@@ -501,15 +470,15 @@ mod tests {
     #[test]
     fn defensive_positions_are_team_sided() {
         let c = GameConfig::default();
-        assert!(defense_x(Team::Player, &c) > c.player_mine_x);
-        assert!(retreat_x(Team::Player, &c) < c.player_statue_x);
-        assert!(defense_x(Team::Enemy, &c) < c.enemy_mine_x);
+        assert!(defense_x(Team::Player, &c) > c.battlefield.player.mine_x);
+        assert!(retreat_x(Team::Player, &c) < c.battlefield.player.statue_x);
+        assert!(defense_x(Team::Enemy, &c) < c.battlefield.enemy.mine_x);
     }
 
     #[test]
     fn miners_are_slower_than_swordsmen() {
         let c = GameConfig::default();
-        assert!(c.miner_speed < c.swordsman_speed);
+        assert!(c.units.miner.speed < c.units.swordsman.speed);
     }
 
     #[test]
@@ -541,7 +510,7 @@ mod tests {
                 &c,
             )
         });
-        assert!(archers.iter().all(|x| *x > c.player_mine_x));
+        assert!(archers.iter().all(|x| *x > c.battlefield.player.mine_x));
         assert!(swords.iter().all(|sword| *sword > archers[2]));
         let mut all = [swords[0], swords[1], archers[0], archers[1], archers[2]];
         all.sort_by(f32::total_cmp);
@@ -557,8 +526,8 @@ mod tests {
         );
         let retreat_second =
             formation_x(Team::Player, ArmyOrder::Retreat, UnitKind::Archer, 0, 1, &c);
-        assert_eq!(retreat_first - retreat_second, c.formation_spacing);
-        assert!(retreat_first < c.player_statue_x);
+        assert_eq!(retreat_first - retreat_second, c.formation.spacing);
+        assert!(retreat_first < c.battlefield.player.statue_x);
     }
 
     #[test]
@@ -574,19 +543,22 @@ mod tests {
         );
         let enemy_destination =
             formation_x(Team::Enemy, ArmyOrder::Attack, UnitKind::Archer, 0, 0, &c);
-        assert_eq!(player_destination, c.enemy_statue_x);
-        assert_eq!(enemy_destination, c.player_statue_x);
-        assert!(player_destination > c.player_statue_x);
-        assert!(enemy_destination < c.enemy_statue_x);
+        assert_eq!(player_destination, c.battlefield.enemy.statue_x);
+        assert_eq!(enemy_destination, c.battlefield.player.statue_x);
+        assert!(player_destination > c.battlefield.player.statue_x);
+        assert!(enemy_destination < c.battlefield.enemy.statue_x);
     }
 
     #[test]
     fn archer_prefers_standoff_distance() {
         let c = GameConfig::default();
-        assert!((target_distance(UnitKind::Archer, c.archer_range, &c) - 249.6).abs() < 0.001);
+        assert!(
+            (target_distance(UnitKind::Archer, c.units.archer.weapon_range, &c) - 546.0).abs()
+                < 0.001
+        );
         assert_eq!(
-            target_distance(UnitKind::Swordsman, c.swordsman_range, &c),
-            c.swordsman_range
+            target_distance(UnitKind::Swordsman, c.units.swordsman.weapon_range, &c),
+            c.units.swordsman.weapon_range
         );
     }
 
@@ -594,19 +566,100 @@ mod tests {
     fn archers_activate_before_swordsmen() {
         let c = load_game_config();
         assert!(activation_range(UnitKind::Archer, &c) > activation_range(UnitKind::Swordsman, &c));
-        assert!(c.archer_activation_range > c.archer_range);
+        assert!(c.units.archer.activation_range > c.units.archer.weapon_range);
     }
 
     #[test]
     fn arrow_trajectory_rises_and_falls_under_gravity() {
         let c = load_game_config();
         let origin = Vec2::ZERO;
-        let velocity = Vec2::new(c.arrow_horizontal_speed, c.arrow_vertical_speed);
-        let (near_apex, _) = projectile_step(origin, velocity, c.arrow_gravity, 0.4);
-        let (after_one_second, _) = projectile_step(origin, velocity, c.arrow_gravity, 1.0);
+        let velocity = ballistic_launch_velocity(
+            origin,
+            Vec2::new(600.0, 0.0),
+            Vec2::ZERO,
+            c.units.archer.arrow.horizontal_speed,
+            c.units.archer.arrow.gravity,
+            c.units.archer.arrow.lifetime_seconds,
+            Vec2::ZERO,
+            c.units.archer.arrow.speed_variation,
+            c.units.archer.arrow.vertical_variation,
+        );
+        let (near_apex, _) = projectile_step(origin, velocity, c.units.archer.arrow.gravity, 0.4);
+        let (after_one_second, _) =
+            projectile_step(origin, velocity, c.units.archer.arrow.gravity, 1.0);
         assert!(near_apex.y > origin.y);
         assert!(after_one_second.y < near_apex.y);
-        assert_eq!(after_one_second.x, c.arrow_horizontal_speed);
+        assert_eq!(after_one_second.x, c.units.archer.arrow.horizontal_speed);
+    }
+
+    #[test]
+    fn close_targets_receive_a_flatter_shot_than_distant_targets() {
+        let c = load_game_config();
+        let arrow = &c.units.archer.arrow;
+        let close = ballistic_launch_velocity(
+            Vec2::ZERO,
+            Vec2::new(120.0, 0.0),
+            Vec2::ZERO,
+            arrow.horizontal_speed,
+            arrow.gravity,
+            arrow.lifetime_seconds,
+            Vec2::ZERO,
+            arrow.speed_variation,
+            arrow.vertical_variation,
+        );
+        let far = ballistic_launch_velocity(
+            Vec2::ZERO,
+            Vec2::new(650.0, 0.0),
+            Vec2::ZERO,
+            arrow.horizontal_speed,
+            arrow.gravity,
+            arrow.lifetime_seconds,
+            Vec2::ZERO,
+            arrow.speed_variation,
+            arrow.vertical_variation,
+        );
+        assert!(close.y < far.y);
+    }
+
+    #[test]
+    fn ballistic_aim_leads_a_moving_target() {
+        let c = load_game_config();
+        let arrow = &c.units.archer.arrow;
+        let stationary = ballistic_launch_velocity(
+            Vec2::ZERO,
+            Vec2::new(500.0, 0.0),
+            Vec2::ZERO,
+            arrow.horizontal_speed,
+            arrow.gravity,
+            arrow.lifetime_seconds,
+            Vec2::ZERO,
+            arrow.speed_variation,
+            arrow.vertical_variation,
+        );
+        let retreating = ballistic_launch_velocity(
+            Vec2::ZERO,
+            Vec2::new(500.0, 0.0),
+            Vec2::new(100.0, 0.0),
+            arrow.horizontal_speed,
+            arrow.gravity,
+            arrow.lifetime_seconds,
+            Vec2::ZERO,
+            arrow.speed_variation,
+            arrow.vertical_variation,
+        );
+        assert!(retreating.y > stationary.y);
+    }
+
+    #[test]
+    fn projectile_variation_is_small_deterministic_and_bounded() {
+        let mut first_seed = 42;
+        let mut second_seed = 42;
+        for _ in 0..32 {
+            let first = next_projectile_variation(&mut first_seed);
+            let second = next_projectile_variation(&mut second_seed);
+            assert_eq!(first, second);
+            assert!((-1.0..=1.0).contains(&first));
+        }
     }
 
     #[test]
@@ -636,10 +689,11 @@ mod tests {
     #[test]
     fn ron_file_controls_character_and_arrow_behavior() {
         let c = load_game_config();
-        assert_eq!(c.archer_activation_range, 720.0);
-        assert_eq!(c.arrow_lifetime_seconds, 1.0);
-        assert_eq!(c.arrow_gravity, 650.0);
-        assert_eq!(c.enemy_swordsmen_per_archer, 2);
+        assert_eq!(c.units.archer.activation_range, 1200.0);
+        assert_eq!(c.units.archer.weapon_range, 700.0);
+        assert_eq!(c.units.archer.arrow.lifetime_seconds, 1.0);
+        assert_eq!(c.units.archer.arrow.gravity, 650.0);
+        assert_eq!(c.ai.enemy_swordsmen_per_archer, 2);
     }
 
     #[test]

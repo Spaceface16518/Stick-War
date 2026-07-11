@@ -1,4 +1,5 @@
 mod battle;
+mod config;
 mod game;
 mod model;
 mod rendering;

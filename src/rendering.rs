@@ -34,7 +34,7 @@ pub fn spawn_battlefield(
             BattleEntity,
             Mesh2d(meshes.add(RegularPolygon::new(70.0, 3))),
             MeshMaterial2d(materials.add(color)),
-            Transform::from_xyz(x, config.ground_y + 185.0, -17.0)
+            Transform::from_xyz(x, config.battlefield.ground_y + 185.0, -17.0)
                 .with_scale(Vec3::new(scale.x, scale.y, 1.0)),
         ));
     }
@@ -47,22 +47,22 @@ pub fn spawn_battlefield(
     commands.spawn((
         BattleEntity,
         Sprite::from_color(Color::srgb(0.2, 0.5, 0.2), Vec2::new(3400.0, 190.0)),
-        Transform::from_xyz(0.0, config.ground_y - 120.0, -10.0),
+        Transform::from_xyz(0.0, config.battlefield.ground_y - 120.0, -10.0),
     ));
     commands.spawn((
         BattleEntity,
         Sprite::from_color(Color::srgb(0.12, 0.28, 0.1), Vec2::new(3400.0, 8.0)),
-        Transform::from_xyz(0.0, config.ground_y - 2.0, -9.0),
+        Transform::from_xyz(0.0, config.battlefield.ground_y - 2.0, -9.0),
     ));
     commands.spawn((
         BattleEntity,
         Sprite::from_color(Color::srgb(0.26, 0.16, 0.09), Vec2::new(3400.0, 55.0)),
-        Transform::from_xyz(0.0, config.ground_y - 210.0, -8.0),
+        Transform::from_xyz(0.0, config.battlefield.ground_y - 210.0, -8.0),
     ));
     commands.spawn((
         BattleEntity,
         Sprite::from_color(Color::srgb(0.12, 0.09, 0.07), Vec2::new(3400.0, 22.0)),
-        Transform::from_xyz(0.0, config.ground_y - 250.0, -7.0),
+        Transform::from_xyz(0.0, config.battlefield.ground_y - 250.0, -7.0),
     ));
 }
 

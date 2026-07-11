@@ -54,6 +54,7 @@ impl Plugin for BattlePlugin {
                 move_miners,
                 move_combat_units,
                 direct_control_movement,
+                update_motion_estimates,
                 move_projectiles,
             )
                 .chain()
@@ -92,9 +93,9 @@ fn reset_battle_camera(
 ) {
     let aspect = window.width() / window.height().max(1.0);
     camera.translation.x = clamp_camera_x(
-        c.player_statue_x,
-        c.battlefield_half_width,
-        camera_half_width(c.camera_view_height, aspect),
+        c.battlefield.player.statue_x,
+        c.battlefield.half_width,
+        camera_half_width(c.camera.view_height, aspect),
     );
     camera.translation.y = 0.0;
 }
@@ -108,24 +109,24 @@ fn update_battle_camera(
     mut camera: Single<&mut Transform, With<BattleCamera>>,
 ) {
     let half_view = camera_half_width(
-        c.camera_view_height,
+        c.camera.view_height,
         window.width() / window.height().max(1.0),
     );
     let desired = if let Some(unit) = controlled.iter().next() {
         let offset = unit.translation.x - camera.translation.x;
-        if offset.abs() > c.camera_dead_zone {
-            unit.translation.x - offset.signum() * c.camera_dead_zone
+        if offset.abs() > c.camera.follow_dead_zone {
+            unit.translation.x - offset.signum() * c.camera.follow_dead_zone
         } else {
             camera.translation.x
         }
     } else {
         let direction =
             keys.pressed(KeyCode::ArrowRight) as i8 - keys.pressed(KeyCode::ArrowLeft) as i8;
-        camera.translation.x + direction as f32 * c.camera_pan_speed * time.delta_secs()
+        camera.translation.x + direction as f32 * c.camera.pan_speed * time.delta_secs()
     };
-    let target = clamp_camera_x(desired, c.battlefield_half_width, half_view);
+    let target = clamp_camera_x(desired, c.battlefield.half_width, half_view);
     let follow_speed = if controlled.is_empty() {
-        c.camera_pan_speed
+        c.camera.pan_speed
     } else {
         900.0
     };
@@ -144,21 +145,22 @@ fn setup_battle(
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     commands.insert_resource(Economy {
-        player_gold: c.player_starting_gold,
-        enemy_gold: c.enemy_starting_gold,
-        player_population: c.starting_population,
-        enemy_population: c.starting_population,
-        population_limit: c.population_limit,
+        player_gold: c.economy.player_starting_gold,
+        enemy_gold: c.economy.enemy_starting_gold,
+        player_population: c.economy.starting_population,
+        enemy_population: c.economy.starting_population,
+        population_limit: c.economy.population_limit,
     });
     commands.insert_resource(PlayerArmyOrder(ArmyOrder::Defend));
     commands.insert_resource(PassiveIncome(Timer::from_seconds(
-        c.passive_income_seconds,
+        c.economy.passive_income_seconds,
         TimerMode::Repeating,
     )));
     commands.insert_resource(EnemyController {
-        spawn_timer: Timer::from_seconds(c.enemy_spawn_seconds, TimerMode::Repeating),
+        spawn_timer: Timer::from_seconds(c.ai.enemy_spawn_seconds, TimerMode::Repeating),
         next_unit: UnitKind::Miner,
     });
+    commands.insert_resource(ProjectileRandom(c.units.archer.arrow.random_seed));
     spawn_battlefield(&mut commands, &mut meshes, &mut materials, &c);
     for team in [Team::Player, Team::Enemy] {
         spawn_statue(
@@ -166,15 +168,15 @@ fn setup_battle(
             &mut meshes,
             &mut materials,
             team,
-            Vec2::new(statue_x(team, &c), c.ground_y),
-            c.statue_health,
+            Vec2::new(statue_x(team, &c), c.battlefield.ground_y),
+            c.units.statue.health,
         );
         spawn_gold_deposit(
             &mut commands,
             &mut meshes,
             &mut materials,
             team,
-            Vec2::new(mine_x(team, &c), c.ground_y),
+            Vec2::new(mine_x(team, &c), c.battlefield.ground_y),
         );
         spawn_miner(
             &mut commands,
@@ -183,8 +185,8 @@ fn setup_battle(
             &c,
             team,
             Vec2::new(
-                statue_x(team, &c) + team.direction() * c.initial_miner_spawn_offset,
-                c.ground_y + c.unit_ground_offset,
+                statue_x(team, &c) + team.direction() * c.units.miner.initial_spawn_offset,
+                c.battlefield.ground_y + c.formation.unit_ground_offset,
             ),
         );
     }
@@ -198,6 +200,7 @@ fn cleanup_battle(mut commands: Commands, entities: Query<Entity, With<BattleEnt
     commands.remove_resource::<PlayerArmyOrder>();
     commands.remove_resource::<PassiveIncome>();
     commands.remove_resource::<EnemyController>();
+    commands.remove_resource::<ProjectileRandom>();
 }
 
 fn passive_income(
@@ -207,7 +210,7 @@ fn passive_income(
     mut economy: ResMut<Economy>,
 ) {
     if timer.0.tick(time.delta()).just_finished() {
-        economy.player_gold += c.passive_income_amount;
+        economy.player_gold += c.economy.passive_income_amount;
     }
 }
 
@@ -306,9 +309,9 @@ fn enemy_controller(
         .iter()
         .filter(|(t, k)| **t == Team::Enemy && **k == UnitKind::Archer)
         .count();
-    ai.next_unit = if miner_count < c.enemy_desired_miners {
+    ai.next_unit = if miner_count < c.ai.enemy_desired_miners {
         UnitKind::Miner
-    } else if swords >= (archers + 1) * c.enemy_swordsmen_per_archer {
+    } else if swords >= (archers + 1) * c.ai.enemy_swordsmen_per_archer {
         UnitKind::Archer
     } else {
         UnitKind::Swordsman
@@ -332,8 +335,9 @@ fn process_training(
             continue;
         }
         let pos = Vec2::new(
-            statue_x(request.team, &c) + request.team.direction() * c.unit_spawn_offset,
-            c.ground_y + c.unit_ground_offset,
+            statue_x(request.team, &c)
+                + request.team.direction() * c.formation.trained_unit_spawn_offset,
+            c.battlefield.ground_y + c.formation.unit_ground_offset,
         );
         match request.kind {
             UnitKind::Miner => {
@@ -406,12 +410,12 @@ fn move_miners(
             }
             MinerState::Mining => {
                 if timer.0.tick(time.delta()).just_finished() {
-                    carried.0 = c.miner_capacity;
+                    carried.0 = c.units.miner.capacity;
                     *state = MinerState::Returning;
                 }
             }
             MinerState::Returning => {
-                let dest = statue_x(*team, &c) + team.direction() * c.miner_return_offset;
+                let dest = statue_x(*team, &c) + team.direction() * c.units.miner.return_offset;
                 transform.translation.x =
                     step_toward(transform.translation.x, dest, speed.0, time.delta_secs());
                 if transform.translation.x == dest {
@@ -476,7 +480,7 @@ fn acquire_targets(
                 }
                 army_order != ArmyOrder::Defend
                     || (other_transform.translation.x - defense_x(*team, &c)).abs()
-                        <= c.defense_radius
+                        <= c.ai.defense_radius
             })
             .min_by(|a, b| {
                 let priority =
@@ -604,7 +608,7 @@ fn move_combat_units(
             continue;
         }
         if army_order == ArmyOrder::Defend
-            && destination.is_some_and(|x| (x - defense_x(*team, &c)).abs() > c.defense_radius)
+            && destination.is_some_and(|x| (x - defense_x(*team, &c)).abs() > c.ai.defense_radius)
         {
             commands.entity(entity).remove::<CurrentTarget>();
             continue;
@@ -613,14 +617,14 @@ fn move_combat_units(
             let distance = (dest - transform.translation.x).abs();
             let preferred = target_distance(*kind, attack.range, &c);
             let too_close = matches!(mode, AttackMode::Projectile)
-                && distance < preferred * c.archer_backpedal_range_factor;
+                && distance < preferred * c.units.archer.backpedal_range_factor;
             if too_close {
                 *state = CombatUnitState::Moving;
                 let escape =
                     transform.translation.x - (dest - transform.translation.x).signum() * preferred;
                 transform.translation.x = step_toward(
                     transform.translation.x,
-                    escape.clamp(-c.battlefield_half_width, c.battlefield_half_width),
+                    escape.clamp(-c.battlefield.half_width, c.battlefield.half_width),
                     speed.0,
                     time.delta_secs(),
                 );
@@ -632,7 +636,7 @@ fn move_combat_units(
                 *state = CombatUnitState::Attacking;
             }
         } else if (order_destination - transform.translation.x).abs()
-            > c.formation_arrival_tolerance
+            > c.formation.arrival_tolerance
         {
             *state = if army_order == ArmyOrder::Retreat {
                 CombatUnitState::Retreating
@@ -662,7 +666,27 @@ fn direct_control_movement(
     for (speed, mut transform) in &mut units {
         transform.translation.x = (transform.translation.x
             + direction as f32 * speed.0 * time.delta_secs())
-        .clamp(-c.battlefield_half_width, c.battlefield_half_width);
+        .clamp(-c.battlefield.half_width, c.battlefield.half_width);
+    }
+}
+
+fn update_motion_estimates(
+    time: Res<Time>,
+    c: Res<GameConfig>,
+    mut units: Query<(&Transform, &mut MotionEstimate), With<Unit>>,
+) {
+    let dt = time.delta_secs();
+    if dt <= f32::EPSILON {
+        return;
+    }
+    for (transform, mut motion) in &mut units {
+        let position = transform.translation.xy();
+        let measured_velocity = (position - motion.previous_position) / dt;
+        motion.velocity = motion.velocity.lerp(
+            measured_velocity,
+            c.units.archer.arrow.velocity_smoothing.clamp(0.0, 1.0),
+        );
+        motion.previous_position = position;
     }
 }
 
@@ -670,9 +694,10 @@ fn automatic_attacks(
     mut commands: Commands,
     time: Res<Time>,
     mut messages: MessageWriter<DamageMessage>,
-    targets: Query<&Transform>,
+    targets: Query<(&Transform, Option<&MotionEstimate>, Has<Statue>)>,
     order: Res<PlayerArmyOrder>,
     c: Res<GameConfig>,
+    mut random: ResMut<ProjectileRandom>,
     mut units: Query<
         (
             Entity,
@@ -689,7 +714,7 @@ fn automatic_attacks(
         if *team == Team::Player && order.0 == ArmyOrder::Retreat {
             continue;
         }
-        let Ok(target_transform) = targets.get(target.0) else {
+        let Ok((target_transform, target_motion, target_is_statue)) = targets.get(target.0) else {
             continue;
         };
         if (target_transform.translation.x - transform.translation.x).abs() <= attack.range
@@ -699,11 +724,14 @@ fn automatic_attacks(
                 &mut commands,
                 &mut messages,
                 &c,
+                &mut random,
                 owner,
                 *team,
                 transform,
                 target.0,
-                target_transform.translation.x,
+                target_transform,
+                target_motion.map_or(Vec2::ZERO, |motion| motion.velocity),
+                target_is_statue,
                 *mode,
                 attack.damage,
             );
@@ -717,10 +745,17 @@ fn controlled_attack(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     c: Res<GameConfig>,
+    mut random: ResMut<ProjectileRandom>,
     mut messages: MessageWriter<DamageMessage>,
     mut units: Query<(Entity, &Team, &Transform, &AttackMode, &mut Attack), With<Controlled>>,
     targets: Query<
-        (Entity, &Team, &Transform),
+        (
+            Entity,
+            &Team,
+            &Transform,
+            Option<&MotionEstimate>,
+            Has<Statue>,
+        ),
         (Or<(With<Unit>, With<Statue>)>, Without<Projectile>),
     >,
 ) {
@@ -729,9 +764,9 @@ fn controlled_attack(
         if !keys.just_pressed(KeyCode::Space) || !attack.cooldown.is_finished() {
             continue;
         }
-        if let Some((entity, _, target_transform)) = targets
+        if let Some((entity, _, target_transform, target_motion, target_is_statue)) = targets
             .iter()
-            .filter(|(_, t, p)| {
+            .filter(|(_, t, p, _, _)| {
                 *t != team && (p.translation.x - transform.translation.x).abs() <= attack.range
             })
             .min_by(|a, b| {
@@ -744,11 +779,14 @@ fn controlled_attack(
                 &mut commands,
                 &mut messages,
                 &c,
+                &mut random,
                 owner,
                 *team,
                 transform,
                 entity,
-                target_transform.translation.x,
+                target_transform,
+                target_motion.map_or(Vec2::ZERO, |motion| motion.velocity),
+                target_is_statue,
                 *mode,
                 attack.damage,
             );
@@ -761,11 +799,14 @@ fn perform_attack(
     commands: &mut Commands,
     messages: &mut MessageWriter<DamageMessage>,
     c: &GameConfig,
+    random: &mut ProjectileRandom,
     owner: Entity,
     team: Team,
     transform: &Transform,
     target: Entity,
-    target_x: f32,
+    target_transform: &Transform,
+    target_velocity: Vec2,
+    target_is_statue: bool,
     mode: AttackMode,
     damage: f32,
 ) {
@@ -777,29 +818,44 @@ fn perform_attack(
             });
         }
         AttackMode::Projectile => {
-            let direction = (target_x - transform.translation.x).signum();
+            let direction = (target_transform.translation.x - transform.translation.x).signum();
+            let origin = Vec2::new(
+                transform.translation.x + direction * c.units.archer.arrow.spawn_forward,
+                transform.translation.y + c.units.archer.arrow.spawn_height,
+            );
+            let aim_height = if target_is_statue {
+                c.units.archer.arrow.statue_target_height
+            } else {
+                c.units.archer.arrow.unit_target_height
+            };
+            let target_position = target_transform.translation.xy() + Vec2::Y * aim_height;
+            let variation = Vec2::new(
+                next_projectile_variation(&mut random.0),
+                next_projectile_variation(&mut random.0),
+            );
+            let velocity = ballistic_launch_velocity(
+                origin,
+                target_position,
+                target_velocity,
+                c.units.archer.arrow.horizontal_speed,
+                c.units.archer.arrow.gravity,
+                c.units.archer.arrow.lifetime_seconds,
+                variation,
+                c.units.archer.arrow.speed_variation,
+                c.units.archer.arrow.vertical_variation,
+            );
             commands.spawn((
                 BattleEntity,
                 Projectile {
                     owner,
                     team,
                     damage,
-                    velocity: Vec2::new(
-                        direction * c.arrow_horizontal_speed,
-                        c.arrow_vertical_speed,
-                    ),
-                    lifetime_remaining: c.arrow_lifetime_seconds,
+                    velocity,
+                    lifetime_remaining: c.units.archer.arrow.lifetime_seconds,
                 },
                 Sprite::from_color(Color::srgb(0.24, 0.13, 0.06), Vec2::new(34.0, 3.0)),
-                Transform::from_xyz(
-                    transform.translation.x + direction * c.arrow_spawn_forward,
-                    transform.translation.y + c.arrow_spawn_height,
-                    8.0,
-                )
-                .with_rotation(Quat::from_rotation_z(
-                    c.arrow_vertical_speed
-                        .atan2(direction * c.arrow_horizontal_speed),
-                )),
+                Transform::from_xyz(origin.x, origin.y, 8.0)
+                    .with_rotation(Quat::from_rotation_z(velocity.y.atan2(velocity.x))),
             ));
         }
     }
@@ -831,7 +887,7 @@ fn move_projectiles(
         let (to, next_velocity) = projectile_step(
             from,
             projectile.velocity,
-            c.arrow_gravity,
+            c.units.archer.arrow.gravity,
             time.delta_secs(),
         );
         projectile.velocity = next_velocity;
@@ -848,25 +904,25 @@ fn move_projectiles(
             .filter(|(_, _, target, unit, statue, _)| {
                 let (half_width, bottom, top) = if *statue {
                     (
-                        c.statue_collision_half_width,
-                        c.statue_collision_bottom,
-                        c.statue_collision_height,
+                        c.collision.statue.half_width,
+                        c.collision.statue.bottom,
+                        c.collision.statue.top,
                     )
                 } else if *unit {
                     (
-                        c.character_collision_half_width,
-                        c.character_collision_bottom,
-                        c.character_collision_height,
+                        c.collision.character.half_width,
+                        c.collision.character.bottom,
+                        c.collision.character.top,
                     )
                 } else {
                     (
-                        c.deposit_collision_half_width,
-                        c.deposit_collision_bottom,
-                        c.deposit_collision_height,
+                        c.collision.deposit.half_width,
+                        c.collision.deposit.bottom,
+                        c.collision.deposit.top,
                     )
                 };
                 let center = target.translation.xy();
-                let radius = Vec2::splat(c.arrow_collision_radius);
+                let radius = Vec2::splat(c.units.archer.arrow.collision_radius);
                 segment_hits_aabb(
                     from,
                     to,
@@ -880,7 +936,7 @@ fn move_projectiles(
                     .distance_squared(from)
                     .total_cmp(&b.2.translation.xy().distance_squared(from))
             });
-        let hit_ground = from.y >= c.ground_y && to.y <= c.ground_y;
+        let hit_ground = from.y >= c.battlefield.ground_y && to.y <= c.battlefield.ground_y;
         if let Some((target, _, _, _, _, health)) = hit {
             if health.is_some() {
                 damage.write(DamageMessage {
@@ -901,7 +957,7 @@ fn move_projectiles(
                 BattleEntity,
                 TimedEffect(Timer::from_seconds(0.12, TimerMode::Once)),
                 Sprite::from_color(Color::srgba(0.65, 0.48, 0.25, 0.8), Vec2::new(20.0, 8.0)),
-                Transform::from_xyz(to.x, to.y.max(c.ground_y), 9.0),
+                Transform::from_xyz(to.x, to.y.max(c.battlefield.ground_y), 9.0),
             ));
             commands.entity(entity).despawn();
         }

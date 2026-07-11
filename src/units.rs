@@ -390,13 +390,20 @@ pub fn spawn_miner(
             UnitKind::Miner,
             team,
             Health {
-                current: c.miner_health,
-                maximum: c.miner_health,
+                current: c.units.miner.health,
+                maximum: c.units.miner.health,
             },
-            MoveSpeed(c.miner_speed),
+            MoveSpeed(c.units.miner.speed),
             MinerState::GoingToMine,
-            MiningTimer(Timer::from_seconds(c.mining_duration, TimerMode::Once)),
+            MiningTimer(Timer::from_seconds(
+                c.units.miner.mining_seconds,
+                TimerMode::Once,
+            )),
             CarriedGold(0),
+            MotionEstimate {
+                previous_position: position,
+                velocity: Vec2::ZERO,
+            },
             Transform::from_xyz(position.x, position.y, 5.0),
             Visibility::default(),
         ))
@@ -420,17 +427,24 @@ pub fn spawn_swordsman(
             UnitKind::Swordsman,
             team,
             Health {
-                current: c.swordsman_health,
-                maximum: c.swordsman_health,
+                current: c.units.swordsman.health,
+                maximum: c.units.swordsman.health,
             },
-            MoveSpeed(c.swordsman_speed),
+            MoveSpeed(c.units.swordsman.speed),
             Attack {
-                damage: c.swordsman_damage,
-                range: c.swordsman_range,
-                cooldown: Timer::from_seconds(c.swordsman_attack_seconds, TimerMode::Once),
+                damage: c.units.swordsman.damage,
+                range: c.units.swordsman.weapon_range,
+                cooldown: Timer::from_seconds(
+                    c.units.swordsman.attack_cooldown_seconds,
+                    TimerMode::Once,
+                ),
             },
             AttackMode::Melee,
             CombatUnitState::Idle,
+            MotionEstimate {
+                previous_position: position,
+                velocity: Vec2::ZERO,
+            },
             Transform::from_xyz(position.x, position.y, 6.0),
             Visibility::default(),
         ))
@@ -461,17 +475,24 @@ pub fn spawn_archer(
             UnitKind::Archer,
             team,
             Health {
-                current: c.archer_health,
-                maximum: c.archer_health,
+                current: c.units.archer.health,
+                maximum: c.units.archer.health,
             },
-            MoveSpeed(c.archer_speed),
+            MoveSpeed(c.units.archer.speed),
             Attack {
-                damage: c.archer_damage,
-                range: c.archer_range,
-                cooldown: Timer::from_seconds(c.archer_attack_seconds, TimerMode::Once),
+                damage: c.units.archer.damage,
+                range: c.units.archer.weapon_range,
+                cooldown: Timer::from_seconds(
+                    c.units.archer.attack_cooldown_seconds,
+                    TimerMode::Once,
+                ),
             },
             AttackMode::Projectile,
             CombatUnitState::Idle,
+            MotionEstimate {
+                previous_position: position,
+                velocity: Vec2::ZERO,
+            },
             Transform::from_xyz(position.x, position.y, 6.0),
             Visibility::default(),
         ))
