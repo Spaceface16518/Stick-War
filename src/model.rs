@@ -297,8 +297,8 @@ pub fn formation_x(
         return statue_x(team, c);
     }
     let front_offset = match kind {
-        UnitKind::Swordsman => 120.0 + role_slot as f32 * c.formation_spacing,
-        UnitKind::Archer => 45.0 + role_slot as f32 * c.formation_spacing,
+        UnitKind::Swordsman => 210.0 + role_slot as f32 * c.formation_spacing,
+        UnitKind::Archer => 35.0 + role_slot as f32 * c.formation_spacing * 0.5,
         UnitKind::Miner => 0.0,
     };
     mine_x(team, c) + team.direction() * front_offset
@@ -406,6 +406,27 @@ mod tests {
         ));
     }
     #[test]
+    fn archer_purchase_uses_125_gold_and_population() {
+        let c = GameConfig::default();
+        let mut exact = economy(125, 2);
+        assert!(try_purchase_unit(
+            Team::Player,
+            UnitKind::Archer,
+            &mut exact,
+            &c
+        ));
+        assert_eq!(exact.player_gold, 0);
+        assert_eq!(exact.player_population, 3);
+
+        let mut short = economy(124, 0);
+        assert!(!try_purchase_unit(
+            Team::Player,
+            UnitKind::Archer,
+            &mut short,
+            &c
+        ));
+    }
+    #[test]
     fn movement_stops_at_destination() {
         assert_eq!(step_toward(0.0, 5.0, 10.0, 1.0), 5.0);
         assert_eq!(step_toward(0.0, 50.0, 10.0, 1.0), 10.0);
@@ -440,16 +461,81 @@ mod tests {
     }
 
     #[test]
-    fn resting_slots_are_spaced_on_the_correct_side() {
+    fn mixed_formation_orders_frontline_and_does_not_overlap() {
         let c = GameConfig::default();
-        let first = resting_x(Team::Player, ArmyOrder::Defend, 0, &c);
-        let second = resting_x(Team::Player, ArmyOrder::Defend, 1, &c);
-        assert_eq!(second - first, c.formation_spacing);
-        assert!(first > c.player_mine_x);
+        let swords = [0, 1].map(|slot| {
+            formation_x(
+                Team::Player,
+                ArmyOrder::Defend,
+                UnitKind::Swordsman,
+                slot,
+                slot,
+                &c,
+            )
+        });
+        let archers = [0, 1, 2].map(|slot| {
+            formation_x(
+                Team::Player,
+                ArmyOrder::Defend,
+                UnitKind::Archer,
+                slot,
+                slot + 2,
+                &c,
+            )
+        });
+        assert!(archers.iter().all(|x| *x > c.player_mine_x));
+        assert!(swords.iter().all(|sword| *sword > archers[2]));
+        let mut all = [swords[0], swords[1], archers[0], archers[1], archers[2]];
+        all.sort_by(f32::total_cmp);
+        assert!(all.windows(2).all(|pair| pair[1] - pair[0] >= 35.0));
 
-        let retreat_first = resting_x(Team::Player, ArmyOrder::Retreat, 0, &c);
-        let retreat_second = resting_x(Team::Player, ArmyOrder::Retreat, 1, &c);
+        let retreat_first = formation_x(
+            Team::Player,
+            ArmyOrder::Retreat,
+            UnitKind::Swordsman,
+            0,
+            0,
+            &c,
+        );
+        let retreat_second =
+            formation_x(Team::Player, ArmyOrder::Retreat, UnitKind::Archer, 0, 1, &c);
         assert_eq!(retreat_first - retreat_second, c.formation_spacing);
         assert!(retreat_first < c.player_statue_x);
+    }
+
+    #[test]
+    fn archer_prefers_standoff_distance() {
+        let c = GameConfig::default();
+        assert!((target_distance(UnitKind::Archer, c.archer_range) - 249.6).abs() < 0.001);
+        assert_eq!(
+            target_distance(UnitKind::Swordsman, c.swordsman_range),
+            c.swordsman_range
+        );
+    }
+
+    #[test]
+    fn straight_arrow_crossing_only_hits_points_on_segment() {
+        assert!(segment_crosses_point(0.0, 10.0, 7.0, 0.0));
+        assert!(segment_crosses_point(10.0, 0.0, 7.0, 0.0));
+        assert!(!segment_crosses_point(0.0, 10.0, 12.0, 0.0));
+        assert!(segment_crosses_point(0.0, 10.0, 12.0, 2.0));
+    }
+
+    #[test]
+    fn camera_clamps_to_battlefield_edges() {
+        assert_eq!(clamp_camera_x(-5000.0, 1600.0, 640.0), -960.0);
+        assert_eq!(clamp_camera_x(5000.0, 1600.0, 640.0), 960.0);
+        assert_eq!(clamp_camera_x(120.0, 1600.0, 640.0), 120.0);
+    }
+
+    #[test]
+    fn camera_bounds_follow_multiple_aspect_ratios() {
+        let height = 720.0;
+        let wide = camera_half_width(height, 16.0 / 9.0);
+        let narrow = camera_half_width(height, 9.0 / 16.0);
+        assert_eq!(wide, 640.0);
+        assert_eq!(narrow, 202.5);
+        assert!(clamp_camera_x(5000.0, 1600.0, narrow) > clamp_camera_x(5000.0, 1600.0, wide));
+        assert_eq!(clamp_camera_x(5000.0, 1600.0, 2000.0), 0.0);
     }
 }

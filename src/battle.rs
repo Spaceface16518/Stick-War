@@ -678,7 +678,10 @@ fn controlled_attack(
     time: Res<Time>,
     mut messages: MessageWriter<DamageMessage>,
     mut units: Query<(&Team, &Transform, &AttackMode, &mut Attack), With<Controlled>>,
-    targets: Query<(Entity, &Team, &Transform), Or<(With<Unit>, With<Statue>)>>,
+    targets: Query<
+        (Entity, &Team, &Transform),
+        (Or<(With<Unit>, With<Statue>)>, Without<Projectile>),
+    >,
 ) {
     for (team, transform, mode, mut attack) in &mut units {
         attack.cooldown.tick(time.delta());
@@ -755,7 +758,10 @@ fn move_projectiles(
     c: Res<GameConfig>,
     mut damage: MessageWriter<DamageMessage>,
     mut projectiles: Query<(Entity, &mut Projectile, &mut Transform)>,
-    targets: Query<(Entity, &Team, &Transform), Or<(With<Unit>, With<Statue>)>>,
+    targets: Query<
+        (Entity, &Team, &Transform),
+        (Or<(With<Unit>, With<Statue>)>, Without<Projectile>),
+    >,
 ) {
     for (entity, mut projectile, mut transform) in &mut projectiles {
         projectile.previous_x = transform.translation.x;
