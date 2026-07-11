@@ -5,7 +5,7 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<AppState>()
-            .init_resource::<GameConfig>()
+            .insert_resource(load_game_config())
             .add_message::<TrainUnitRequest>()
             .add_message::<DamageMessage>()
             .add_plugins((BattlePlugin, UiPlugin))

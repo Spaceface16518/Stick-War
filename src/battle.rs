@@ -144,11 +144,11 @@ fn setup_battle(
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     commands.insert_resource(Economy {
-        player_gold: 150,
-        enemy_gold: 150,
-        player_population: 1,
-        enemy_population: 1,
-        population_limit: 12,
+        player_gold: c.player_starting_gold,
+        enemy_gold: c.enemy_starting_gold,
+        player_population: c.starting_population,
+        enemy_population: c.starting_population,
+        population_limit: c.population_limit,
     });
     commands.insert_resource(PlayerArmyOrder(ArmyOrder::Defend));
     commands.insert_resource(PassiveIncome(Timer::from_seconds(
@@ -156,7 +156,7 @@ fn setup_battle(
         TimerMode::Repeating,
     )));
     commands.insert_resource(EnemyController {
-        spawn_timer: Timer::from_seconds(2.0, TimerMode::Repeating),
+        spawn_timer: Timer::from_seconds(c.enemy_spawn_seconds, TimerMode::Repeating),
         next_unit: UnitKind::Miner,
     });
     spawn_battlefield(&mut commands, &mut meshes, &mut materials, &c);
@@ -183,8 +183,8 @@ fn setup_battle(
             &c,
             team,
             Vec2::new(
-                statue_x(team, &c) + team.direction() * 80.0,
-                c.ground_y + 25.0,
+                statue_x(team, &c) + team.direction() * c.initial_miner_spawn_offset,
+                c.ground_y + c.unit_ground_offset,
             ),
         );
     }
@@ -286,6 +286,7 @@ fn cycle_control(
 
 fn enemy_controller(
     time: Res<Time>,
+    c: Res<GameConfig>,
     mut ai: ResMut<EnemyController>,
     units: Query<(&Team, &UnitKind), With<Unit>>,
     mut train: MessageWriter<TrainUnitRequest>,
@@ -305,9 +306,9 @@ fn enemy_controller(
         .iter()
         .filter(|(t, k)| **t == Team::Enemy && **k == UnitKind::Archer)
         .count();
-    ai.next_unit = if miner_count < 2 {
+    ai.next_unit = if miner_count < c.enemy_desired_miners {
         UnitKind::Miner
-    } else if swords >= (archers + 1) * 2 {
+    } else if swords >= (archers + 1) * c.enemy_swordsmen_per_archer {
         UnitKind::Archer
     } else {
         UnitKind::Swordsman
@@ -331,8 +332,8 @@ fn process_training(
             continue;
         }
         let pos = Vec2::new(
-            statue_x(request.team, &c) + request.team.direction() * 85.0,
-            c.ground_y + 25.0,
+            statue_x(request.team, &c) + request.team.direction() * c.unit_spawn_offset,
+            c.ground_y + c.unit_ground_offset,
         );
         match request.kind {
             UnitKind::Miner => {
@@ -410,7 +411,7 @@ fn move_miners(
                 }
             }
             MinerState::Returning => {
-                let dest = statue_x(*team, &c) + team.direction() * 70.0;
+                let dest = statue_x(*team, &c) + team.direction() * c.miner_return_offset;
                 transform.translation.x =
                     step_toward(transform.translation.x, dest, speed.0, time.delta_secs());
                 if transform.translation.x == dest {
@@ -427,13 +428,23 @@ fn acquire_targets(
     mut commands: Commands,
     c: Res<GameConfig>,
     order: Res<PlayerArmyOrder>,
-    attackers: Query<(Entity, &Team, Has<Controlled>, Option<&CurrentTarget>), With<Attack>>,
+    attackers: Query<
+        (
+            Entity,
+            &Team,
+            &UnitKind,
+            &Transform,
+            Has<Controlled>,
+            Option<&CurrentTarget>,
+        ),
+        With<Attack>,
+    >,
     candidates: Query<
         (Entity, &Team, &Transform, Has<Unit>, Option<&CurrentTarget>),
         Or<(With<Unit>, With<Statue>)>,
     >,
 ) {
-    for (entity, team, controlled, target) in &attackers {
+    for (entity, team, kind, attacker_transform, controlled, target) in &attackers {
         if controlled {
             if target.is_some() {
                 commands.entity(entity).remove::<CurrentTarget>();
@@ -456,6 +467,11 @@ fn acquire_targets(
             .iter()
             .filter(|(_, other, other_transform, _, _)| {
                 if *other == team {
+                    return false;
+                }
+                if (other_transform.translation.x - attacker_transform.translation.x).abs()
+                    > activation_range(*kind, &c)
+                {
                     return false;
                 }
                 army_order != ArmyOrder::Defend
@@ -583,9 +599,9 @@ fn move_combat_units(
         }
         if let Some(dest) = destination {
             let distance = (dest - transform.translation.x).abs();
-            let preferred = target_distance(*kind, attack.range);
-            let too_close =
-                matches!(mode, AttackMode::Projectile { .. }) && distance < preferred * 0.55;
+            let preferred = target_distance(*kind, attack.range, &c);
+            let too_close = matches!(mode, AttackMode::Projectile)
+                && distance < preferred * c.archer_backpedal_range_factor;
             if too_close {
                 *state = CombatUnitState::Moving;
                 let escape =
@@ -603,7 +619,7 @@ fn move_combat_units(
             } else {
                 *state = CombatUnitState::Attacking;
             }
-        } else if (fallback - transform.translation.x).abs() > 2.0 {
+        } else if (fallback - transform.translation.x).abs() > c.formation_arrival_tolerance {
             *state = if army_order == ArmyOrder::Retreat {
                 CombatUnitState::Retreating
             } else {
@@ -642,12 +658,20 @@ fn automatic_attacks(
     mut messages: MessageWriter<DamageMessage>,
     targets: Query<&Transform>,
     order: Res<PlayerArmyOrder>,
+    c: Res<GameConfig>,
     mut units: Query<
-        (&Team, &Transform, &CurrentTarget, &AttackMode, &mut Attack),
+        (
+            Entity,
+            &Team,
+            &Transform,
+            &CurrentTarget,
+            &AttackMode,
+            &mut Attack,
+        ),
         Without<Controlled>,
     >,
 ) {
-    for (team, transform, target, mode, mut attack) in &mut units {
+    for (owner, team, transform, target, mode, mut attack) in &mut units {
         if *team == Team::Player && order.0 == ArmyOrder::Retreat {
             continue;
         }
@@ -660,7 +684,8 @@ fn automatic_attacks(
             perform_attack(
                 &mut commands,
                 &mut messages,
-                *team,
+                &c,
+                owner,
                 transform,
                 target.0,
                 target_transform.translation.x,
@@ -676,14 +701,15 @@ fn controlled_attack(
     mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
+    c: Res<GameConfig>,
     mut messages: MessageWriter<DamageMessage>,
-    mut units: Query<(&Team, &Transform, &AttackMode, &mut Attack), With<Controlled>>,
+    mut units: Query<(Entity, &Team, &Transform, &AttackMode, &mut Attack), With<Controlled>>,
     targets: Query<
         (Entity, &Team, &Transform),
         (Or<(With<Unit>, With<Statue>)>, Without<Projectile>),
     >,
 ) {
-    for (team, transform, mode, mut attack) in &mut units {
+    for (owner, team, transform, mode, mut attack) in &mut units {
         attack.cooldown.tick(time.delta());
         if !keys.just_pressed(KeyCode::Space) || !attack.cooldown.is_finished() {
             continue;
@@ -702,7 +728,8 @@ fn controlled_attack(
             perform_attack(
                 &mut commands,
                 &mut messages,
-                *team,
+                &c,
+                owner,
                 transform,
                 entity,
                 target_transform.translation.x,
@@ -717,7 +744,8 @@ fn controlled_attack(
 fn perform_attack(
     commands: &mut Commands,
     messages: &mut MessageWriter<DamageMessage>,
-    team: Team,
+    c: &GameConfig,
+    owner: Entity,
     transform: &Transform,
     target: Entity,
     target_x: f32,
@@ -731,22 +759,29 @@ fn perform_attack(
                 amount: damage,
             });
         }
-        AttackMode::Projectile { speed } => {
+        AttackMode::Projectile => {
             let direction = (target_x - transform.translation.x).signum();
             commands.spawn((
                 BattleEntity,
                 Projectile {
-                    team,
+                    owner,
                     damage,
-                    velocity_x: direction * speed,
-                    previous_x: transform.translation.x,
+                    velocity: Vec2::new(
+                        direction * c.arrow_horizontal_speed,
+                        c.arrow_vertical_speed,
+                    ),
+                    lifetime_remaining: c.arrow_lifetime_seconds,
                 },
                 Sprite::from_color(Color::srgb(0.24, 0.13, 0.06), Vec2::new(34.0, 3.0)),
                 Transform::from_xyz(
-                    transform.translation.x + direction * 24.0,
-                    transform.translation.y + 52.0,
+                    transform.translation.x + direction * c.arrow_spawn_forward,
+                    transform.translation.y + c.arrow_spawn_height,
                     8.0,
-                ),
+                )
+                .with_rotation(Quat::from_rotation_z(
+                    c.arrow_vertical_speed
+                        .atan2(direction * c.arrow_horizontal_speed),
+                )),
             ));
         }
     }
@@ -758,35 +793,74 @@ fn move_projectiles(
     c: Res<GameConfig>,
     mut damage: MessageWriter<DamageMessage>,
     mut projectiles: Query<(Entity, &mut Projectile, &mut Transform)>,
-    targets: Query<
-        (Entity, &Team, &Transform),
-        (Or<(With<Unit>, With<Statue>)>, Without<Projectile>),
+    objects: Query<
+        (Entity, &Transform, Has<Unit>, Has<Statue>, Option<&Health>),
+        (
+            Or<(With<Unit>, With<Statue>, With<GoldDeposit>)>,
+            Without<Projectile>,
+        ),
     >,
 ) {
     for (entity, mut projectile, mut transform) in &mut projectiles {
-        projectile.previous_x = transform.translation.x;
-        transform.translation.x += projectile.velocity_x * time.delta_secs();
-        let hit = targets
+        let from = transform.translation.xy();
+        let (to, next_velocity) = projectile_step(
+            from,
+            projectile.velocity,
+            c.arrow_gravity,
+            time.delta_secs(),
+        );
+        projectile.velocity = next_velocity;
+        projectile.lifetime_remaining -= time.delta_secs();
+        transform.translation.x = to.x;
+        transform.translation.y = to.y;
+        transform.rotation = Quat::from_rotation_z(next_velocity.y.atan2(next_velocity.x));
+
+        let hit = objects
             .iter()
-            .filter(|(_, team, target)| {
-                **team != projectile.team
-                    && segment_crosses_point(
-                        projectile.previous_x,
-                        transform.translation.x,
-                        target.translation.x,
-                        18.0,
+            .filter(|(target, _, _, _, _)| *target != projectile.owner)
+            .filter(|(_, target, unit, statue, _)| {
+                let (half_width, bottom, top) = if *statue {
+                    (
+                        c.statue_collision_half_width,
+                        c.statue_collision_bottom,
+                        c.statue_collision_height,
                     )
+                } else if *unit {
+                    (
+                        c.character_collision_half_width,
+                        c.character_collision_bottom,
+                        c.character_collision_height,
+                    )
+                } else {
+                    (
+                        c.deposit_collision_half_width,
+                        c.deposit_collision_bottom,
+                        c.deposit_collision_height,
+                    )
+                };
+                let center = target.translation.xy();
+                let radius = Vec2::splat(c.arrow_collision_radius);
+                segment_hits_aabb(
+                    from,
+                    to,
+                    center + Vec2::new(-half_width, bottom) - radius,
+                    center + Vec2::new(half_width, top) + radius,
+                )
             })
             .min_by(|a, b| {
-                (a.2.translation.x - projectile.previous_x)
-                    .abs()
-                    .total_cmp(&(b.2.translation.x - projectile.previous_x).abs())
+                a.1.translation
+                    .xy()
+                    .distance_squared(from)
+                    .total_cmp(&b.1.translation.xy().distance_squared(from))
             });
-        if let Some((target, _, _)) = hit {
-            damage.write(DamageMessage {
-                target,
-                amount: projectile.damage,
-            });
+        let hit_ground = from.y >= c.ground_y && to.y <= c.ground_y;
+        if let Some((target, _, _, _, health)) = hit {
+            if health.is_some() {
+                damage.write(DamageMessage {
+                    target,
+                    amount: projectile.damage,
+                });
+            }
             commands.spawn((
                 BattleEntity,
                 TimedEffect(Timer::from_seconds(0.18, TimerMode::Once)),
@@ -795,7 +869,13 @@ fn move_projectiles(
                     .with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_4)),
             ));
             commands.entity(entity).despawn();
-        } else if transform.translation.x.abs() > c.battlefield_half_width + 100.0 {
+        } else if hit_ground || projectile.lifetime_remaining <= 0.0 {
+            commands.spawn((
+                BattleEntity,
+                TimedEffect(Timer::from_seconds(0.12, TimerMode::Once)),
+                Sprite::from_color(Color::srgba(0.65, 0.48, 0.25, 0.8), Vec2::new(20.0, 8.0)),
+                Transform::from_xyz(to.x, to.y.max(c.ground_y), 9.0),
+            ));
             commands.entity(entity).despawn();
         }
     }

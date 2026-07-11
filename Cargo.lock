@@ -4657,6 +4657,8 @@ name = "stick-war"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "ron",
+ "serde",
 ]
 
 [[package]]

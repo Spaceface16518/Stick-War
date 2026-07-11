@@ -470,9 +470,7 @@ pub fn spawn_archer(
                 range: c.archer_range,
                 cooldown: Timer::from_seconds(c.archer_attack_seconds, TimerMode::Once),
             },
-            AttackMode::Projectile {
-                speed: c.arrow_speed,
-            },
+            AttackMode::Projectile,
             CombatUnitState::Idle,
             Transform::from_xyz(position.x, position.y, 6.0),
             Visibility::default(),

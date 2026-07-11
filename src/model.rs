@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use serde::Deserialize;
 
 #[derive(States, Debug, Clone, Copy, Default, Eq, PartialEq, Hash)]
 pub enum AppState {
@@ -62,14 +63,14 @@ pub struct Attack {
 #[derive(Component, Debug, Clone, Copy)]
 pub enum AttackMode {
     Melee,
-    Projectile { speed: f32 },
+    Projectile,
 }
 #[derive(Component, Debug, Clone, Copy)]
 pub struct Projectile {
-    pub team: Team,
+    pub owner: Entity,
     pub damage: f32,
-    pub velocity_x: f32,
-    pub previous_x: f32,
+    pub velocity: Vec2,
+    pub lifetime_remaining: f32,
 }
 #[derive(Component)]
 pub struct CurrentTarget(pub Entity);
@@ -170,7 +171,7 @@ impl Economy {
     }
 }
 
-#[derive(Resource)]
+#[derive(Resource, Debug, Clone, Deserialize)]
 pub struct GameConfig {
     pub battlefield_half_width: f32,
     pub ground_y: f32,
@@ -178,6 +179,10 @@ pub struct GameConfig {
     pub enemy_statue_x: f32,
     pub player_mine_x: f32,
     pub enemy_mine_x: f32,
+    pub player_starting_gold: u32,
+    pub enemy_starting_gold: u32,
+    pub starting_population: u32,
+    pub population_limit: u32,
     pub miner_cost: u32,
     pub miner_health: f32,
     pub miner_speed: f32,
@@ -191,59 +196,62 @@ pub struct GameConfig {
     pub swordsman_damage: f32,
     pub swordsman_range: f32,
     pub swordsman_attack_seconds: f32,
+    pub swordsman_activation_range: f32,
     pub archer_cost: u32,
     pub archer_health: f32,
     pub archer_speed: f32,
     pub archer_damage: f32,
     pub archer_range: f32,
     pub archer_attack_seconds: f32,
-    pub arrow_speed: f32,
+    pub archer_activation_range: f32,
+    pub archer_preferred_range_factor: f32,
+    pub archer_backpedal_range_factor: f32,
+    pub arrow_horizontal_speed: f32,
+    pub arrow_vertical_speed: f32,
+    pub arrow_gravity: f32,
+    pub arrow_lifetime_seconds: f32,
+    pub arrow_collision_radius: f32,
+    pub arrow_spawn_forward: f32,
+    pub arrow_spawn_height: f32,
+    pub character_collision_half_width: f32,
+    pub character_collision_bottom: f32,
+    pub character_collision_height: f32,
+    pub statue_collision_half_width: f32,
+    pub statue_collision_bottom: f32,
+    pub statue_collision_height: f32,
+    pub deposit_collision_half_width: f32,
+    pub deposit_collision_bottom: f32,
+    pub deposit_collision_height: f32,
     pub statue_health: f32,
     pub defense_radius: f32,
     pub retreat_offset: f32,
     pub formation_spacing: f32,
+    pub swordsman_defense_offset: f32,
+    pub archer_defense_offset: f32,
+    pub archer_formation_spacing_factor: f32,
+    pub unit_spawn_offset: f32,
+    pub initial_miner_spawn_offset: f32,
+    pub unit_ground_offset: f32,
+    pub miner_return_offset: f32,
+    pub formation_arrival_tolerance: f32,
+    pub defense_line_offset: f32,
+    pub enemy_spawn_seconds: f32,
+    pub enemy_desired_miners: usize,
+    pub enemy_swordsmen_per_archer: usize,
     pub camera_view_height: f32,
     pub camera_pan_speed: f32,
     pub camera_dead_zone: f32,
 }
 impl Default for GameConfig {
     fn default() -> Self {
-        Self {
-            battlefield_half_width: 1600.0,
-            ground_y: -180.0,
-            player_statue_x: -1400.0,
-            enemy_statue_x: 1400.0,
-            player_mine_x: -1080.0,
-            enemy_mine_x: 1080.0,
-            miner_cost: 50,
-            miner_health: 40.0,
-            miner_speed: 65.0,
-            miner_capacity: 25,
-            mining_duration: 1.5,
-            passive_income_amount: 5,
-            passive_income_seconds: 2.0,
-            swordsman_cost: 100,
-            swordsman_health: 100.0,
-            swordsman_speed: 120.0,
-            swordsman_damage: 20.0,
-            swordsman_range: 55.0,
-            swordsman_attack_seconds: 0.8,
-            archer_cost: 125,
-            archer_health: 70.0,
-            archer_speed: 95.0,
-            archer_damage: 15.0,
-            archer_range: 320.0,
-            archer_attack_seconds: 1.4,
-            arrow_speed: 500.0,
-            statue_health: 500.0,
-            defense_radius: 280.0,
-            retreat_offset: 100.0,
-            formation_spacing: 72.0,
-            camera_view_height: 720.0,
-            camera_pan_speed: 650.0,
-            camera_dead_zone: 170.0,
-        }
+        load_game_config()
     }
+}
+
+pub fn load_game_config() -> GameConfig {
+    let source = std::fs::read_to_string("config/game_config.ron")
+        .unwrap_or_else(|_| include_str!("../config/game_config.ron").to_owned());
+    ron::from_str(&source).expect("config/game_config.ron must contain a valid GameConfig")
 }
 
 #[derive(Message)]
@@ -277,7 +285,7 @@ pub fn mine_x(team: Team, c: &GameConfig) -> f32 {
     }
 }
 pub fn defense_x(team: Team, c: &GameConfig) -> f32 {
-    mine_x(team, c) + team.direction() * 120.0
+    mine_x(team, c) + team.direction() * c.defense_line_offset
 }
 pub fn retreat_x(team: Team, c: &GameConfig) -> f32 {
     statue_x(team, c) - team.direction() * c.retreat_offset
@@ -297,23 +305,59 @@ pub fn formation_x(
         return statue_x(team, c);
     }
     let front_offset = match kind {
-        UnitKind::Swordsman => 210.0 + role_slot as f32 * c.formation_spacing,
-        UnitKind::Archer => 35.0 + role_slot as f32 * c.formation_spacing * 0.5,
+        UnitKind::Swordsman => c.swordsman_defense_offset + role_slot as f32 * c.formation_spacing,
+        UnitKind::Archer => {
+            c.archer_defense_offset
+                + role_slot as f32 * c.formation_spacing * c.archer_formation_spacing_factor
+        }
         UnitKind::Miner => 0.0,
     };
     mine_x(team, c) + team.direction() * front_offset
 }
-pub fn segment_crosses_point(from: f32, to: f32, point: f32, radius: f32) -> bool {
-    let low = from.min(to) - radius;
-    let high = from.max(to) + radius;
-    point >= low && point <= high
-}
-pub fn target_distance(kind: UnitKind, attack_range: f32) -> f32 {
+pub fn target_distance(kind: UnitKind, attack_range: f32, c: &GameConfig) -> f32 {
     if kind == UnitKind::Archer {
-        attack_range * 0.78
+        attack_range * c.archer_preferred_range_factor
     } else {
         attack_range
     }
+}
+pub fn activation_range(kind: UnitKind, c: &GameConfig) -> f32 {
+    match kind {
+        UnitKind::Miner => 0.0,
+        UnitKind::Swordsman => c.swordsman_activation_range,
+        UnitKind::Archer => c.archer_activation_range,
+    }
+}
+pub fn projectile_step(position: Vec2, velocity: Vec2, gravity: f32, dt: f32) -> (Vec2, Vec2) {
+    let next = Vec2::new(
+        position.x + velocity.x * dt,
+        position.y + velocity.y * dt - gravity * dt * dt * 0.5,
+    );
+    (next, Vec2::new(velocity.x, velocity.y - gravity * dt))
+}
+pub fn segment_hits_aabb(from: Vec2, to: Vec2, min: Vec2, max: Vec2) -> bool {
+    let delta = to - from;
+    let mut near: f32 = 0.0;
+    let mut far: f32 = 1.0;
+    for (origin, direction, lower, upper) in [
+        (from.x, delta.x, min.x, max.x),
+        (from.y, delta.y, min.y, max.y),
+    ] {
+        if direction.abs() < f32::EPSILON {
+            if origin < lower || origin > upper {
+                return false;
+            }
+        } else {
+            let first = (lower - origin) / direction;
+            let second = (upper - origin) / direction;
+            near = near.max(first.min(second));
+            far = far.min(first.max(second));
+            if near > far {
+                return false;
+            }
+        }
+    }
+    true
 }
 pub fn camera_half_width(view_height: f32, aspect_ratio: f32) -> f32 {
     view_height * aspect_ratio.max(0.01) * 0.5
@@ -506,19 +550,55 @@ mod tests {
     #[test]
     fn archer_prefers_standoff_distance() {
         let c = GameConfig::default();
-        assert!((target_distance(UnitKind::Archer, c.archer_range) - 249.6).abs() < 0.001);
+        assert!((target_distance(UnitKind::Archer, c.archer_range, &c) - 249.6).abs() < 0.001);
         assert_eq!(
-            target_distance(UnitKind::Swordsman, c.swordsman_range),
+            target_distance(UnitKind::Swordsman, c.swordsman_range, &c),
             c.swordsman_range
         );
     }
 
     #[test]
-    fn straight_arrow_crossing_only_hits_points_on_segment() {
-        assert!(segment_crosses_point(0.0, 10.0, 7.0, 0.0));
-        assert!(segment_crosses_point(10.0, 0.0, 7.0, 0.0));
-        assert!(!segment_crosses_point(0.0, 10.0, 12.0, 0.0));
-        assert!(segment_crosses_point(0.0, 10.0, 12.0, 2.0));
+    fn archers_activate_before_swordsmen() {
+        let c = load_game_config();
+        assert!(activation_range(UnitKind::Archer, &c) > activation_range(UnitKind::Swordsman, &c));
+        assert!(c.archer_activation_range > c.archer_range);
+    }
+
+    #[test]
+    fn arrow_trajectory_rises_and_falls_under_gravity() {
+        let c = load_game_config();
+        let origin = Vec2::ZERO;
+        let velocity = Vec2::new(c.arrow_horizontal_speed, c.arrow_vertical_speed);
+        let (near_apex, _) = projectile_step(origin, velocity, c.arrow_gravity, 0.4);
+        let (after_one_second, _) = projectile_step(origin, velocity, c.arrow_gravity, 1.0);
+        assert!(near_apex.y > origin.y);
+        assert!(after_one_second.y < near_apex.y);
+        assert_eq!(after_one_second.x, c.arrow_horizontal_speed);
+    }
+
+    #[test]
+    fn swept_arrow_collides_with_character_or_ground_bounds() {
+        assert!(segment_hits_aabb(
+            Vec2::new(0.0, 20.0),
+            Vec2::new(30.0, -10.0),
+            Vec2::new(12.0, -5.0),
+            Vec2::new(18.0, 25.0),
+        ));
+        assert!(!segment_hits_aabb(
+            Vec2::new(0.0, 40.0),
+            Vec2::new(30.0, 30.0),
+            Vec2::new(12.0, -5.0),
+            Vec2::new(18.0, 25.0),
+        ));
+    }
+
+    #[test]
+    fn ron_file_controls_character_and_arrow_behavior() {
+        let c = load_game_config();
+        assert_eq!(c.archer_activation_range, 720.0);
+        assert_eq!(c.arrow_lifetime_seconds, 1.0);
+        assert_eq!(c.arrow_gravity, 650.0);
+        assert_eq!(c.enemy_swordsmen_per_archer, 2);
     }
 
     #[test]
