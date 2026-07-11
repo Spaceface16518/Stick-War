@@ -83,3 +83,9 @@ Open the local URL printed by `serve`. The build script creates `dist/`, compile
 - `config/game_config.ron` — balance and behavior configuration
 - `web/` — HTML and JavaScript browser shell
 - `scripts/build-web.mjs` — WebAssembly build pipeline
+
+Screen lifecycles are separated with Bevy states. Menu and results entities and
+systems exist only in their respective states and use Bevy's reactive desktop
+update mode, so static UI screens sleep between window/input events. Entering a
+battle switches to the continuous game update mode required by simulation and
+animation; leaving it cleans up battle entities and restores reactive updates.
