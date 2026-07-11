@@ -40,7 +40,7 @@ impl ComputedStates for RuntimeActivity {
 
     fn compute(state: AppState) -> Option<Self> {
         Some(match state {
-            AppState::Battle => Self::Simulation,
+            AppState::Battle | AppState::Sandbox => Self::Simulation,
             _ => Self::Interface,
         })
     }

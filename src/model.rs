@@ -6,6 +6,7 @@ pub enum AppState {
     #[default]
     MainMenu,
     Battle,
+    Sandbox,
     Results,
 }
 
@@ -142,9 +143,65 @@ pub enum ArmyOrder {
     Retreat,
 }
 #[derive(Resource)]
-pub struct PlayerArmyOrder(pub ArmyOrder);
+pub struct ArmyOrders {
+    pub player: ArmyOrder,
+    pub enemy: ArmyOrder,
+}
+impl ArmyOrders {
+    pub fn get(&self, team: Team) -> ArmyOrder {
+        match team {
+            Team::Player => self.player,
+            Team::Enemy => self.enemy,
+        }
+    }
+
+    pub fn set(&mut self, team: Team, order: ArmyOrder) {
+        match team {
+            Team::Player => self.player = order,
+            Team::Enemy => self.enemy = order,
+        }
+    }
+}
 #[derive(Resource)]
 pub struct PassiveIncome(pub Timer);
+
+#[derive(Resource)]
+pub struct BattleClock {
+    pub elapsed_seconds: f32,
+}
+
+#[derive(Resource)]
+pub struct SandboxSettings {
+    pub is_sandbox: bool,
+    pub paused: bool,
+    pub charge_costs: bool,
+    pub training_time_enabled: bool,
+}
+
+#[derive(Debug)]
+pub struct ActiveTraining {
+    pub team: Team,
+    pub kind: UnitKind,
+    pub timer: Timer,
+}
+
+#[derive(Resource, Default)]
+pub struct TrainingQueue(pub Vec<ActiveTraining>);
+
+impl TrainingQueue {
+    pub fn contains(&self, team: Team, kind: UnitKind) -> bool {
+        self.0
+            .iter()
+            .any(|training| training.team == team && training.kind == kind)
+    }
+
+    pub fn remaining(&self, team: Team, kind: UnitKind) -> Option<f32> {
+        self.0
+            .iter()
+            .find(|training| training.team == team && training.kind == kind)
+            .map(|training| training.timer.remaining_secs())
+    }
+}
 
 #[derive(Resource)]
 pub struct Economy {
@@ -202,6 +259,14 @@ pub struct EnemyController {
 }
 #[derive(Resource)]
 pub struct CombatRandom(pub u64);
+
+pub fn training_seconds(kind: UnitKind, c: &GameConfig) -> f32 {
+    match kind {
+        UnitKind::Miner => c.units.miner.training_seconds,
+        UnitKind::Swordsman => c.units.swordsman.training_seconds,
+        UnitKind::Archer => c.units.archer.training_seconds,
+    }
+}
 
 pub fn statue_x(team: Team, c: &GameConfig) -> f32 {
     if team == Team::Player {
@@ -378,21 +443,26 @@ pub fn target_priority(is_attacking_us: bool, is_current_target: bool) -> u8 {
         2
     }
 }
-pub fn try_purchase_unit(
+pub fn try_reserve_unit(
     team: Team,
     kind: UnitKind,
     economy: &mut Economy,
     c: &GameConfig,
+    charge_cost: bool,
 ) -> bool {
     let cost = match kind {
         UnitKind::Miner => c.units.miner.cost,
         UnitKind::Swordsman => c.units.swordsman.cost,
         UnitKind::Archer => c.units.archer.cost,
     };
-    if economy.gold(team) < cost || economy.population(team) >= economy.population_limit {
+    if (charge_cost && economy.gold(team) < cost)
+        || economy.population(team) >= economy.population_limit
+    {
         return false;
     }
-    *economy.gold_mut(team) -= cost;
+    if charge_cost {
+        *economy.gold_mut(team) -= cost;
+    }
     *economy.population_mut(team) += 1;
     true
 }
@@ -412,54 +482,84 @@ mod tests {
     #[test]
     fn purchase_succeeds() {
         let mut e = economy(100, 0);
-        assert!(try_purchase_unit(
+        assert!(try_reserve_unit(
             Team::Player,
             UnitKind::Swordsman,
             &mut e,
-            &GameConfig::default()
+            &GameConfig::default(),
+            true,
         ));
         assert_eq!(e.player_gold, 0);
     }
     #[test]
     fn purchase_fails_without_gold() {
         let mut e = economy(49, 0);
-        assert!(!try_purchase_unit(
+        assert!(!try_reserve_unit(
             Team::Player,
             UnitKind::Miner,
             &mut e,
-            &GameConfig::default()
+            &GameConfig::default(),
+            true,
         ));
     }
     #[test]
     fn purchase_fails_at_limit() {
         let mut e = economy(500, 10);
-        assert!(!try_purchase_unit(
+        assert!(!try_reserve_unit(
             Team::Player,
             UnitKind::Miner,
             &mut e,
-            &GameConfig::default()
+            &GameConfig::default(),
+            true,
         ));
     }
     #[test]
     fn archer_purchase_uses_125_gold_and_population() {
         let c = GameConfig::default();
         let mut exact = economy(125, 2);
-        assert!(try_purchase_unit(
+        assert!(try_reserve_unit(
             Team::Player,
             UnitKind::Archer,
             &mut exact,
-            &c
+            &c,
+            true,
         ));
         assert_eq!(exact.player_gold, 0);
         assert_eq!(exact.player_population, 3);
 
         let mut short = economy(124, 0);
-        assert!(!try_purchase_unit(
+        assert!(!try_reserve_unit(
             Team::Player,
             UnitKind::Archer,
             &mut short,
-            &c
+            &c,
+            true,
         ));
+    }
+    #[test]
+    fn free_training_reserves_population_without_spending_gold() {
+        let mut e = economy(0, 2);
+        assert!(try_reserve_unit(
+            Team::Enemy,
+            UnitKind::Archer,
+            &mut e,
+            &GameConfig::default(),
+            false,
+        ));
+        assert_eq!(e.enemy_gold, 0);
+        assert_eq!(e.enemy_population, 3);
+    }
+    #[test]
+    fn training_slots_are_unique_per_team_and_kind() {
+        let mut queue = TrainingQueue::default();
+        queue.0.push(ActiveTraining {
+            team: Team::Player,
+            kind: UnitKind::Miner,
+            timer: Timer::from_seconds(3.0, TimerMode::Once),
+        });
+        assert!(queue.contains(Team::Player, UnitKind::Miner));
+        assert!(!queue.contains(Team::Enemy, UnitKind::Miner));
+        assert!(!queue.contains(Team::Player, UnitKind::Archer));
     }
     #[test]
     fn movement_stops_at_destination() {

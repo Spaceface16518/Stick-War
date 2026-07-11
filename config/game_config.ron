@@ -16,6 +16,7 @@
     units: (
         miner: (
             cost: 50,
+            training_seconds: 3.0,
             health: 40.0,
             speed: 65.0,
             capacity: 25,
@@ -25,6 +26,7 @@
         ),
         swordsman: (
             cost: 100,
+            training_seconds: 5.0,
             health: 100.0,
             speed: 120.0,
             damage: 20.0,
@@ -38,6 +40,7 @@
         ),
         archer: (
             cost: 125,
+            training_seconds: 7.0,
             health: 70.0,
             speed: 95.0,
             damage: 15.0,
