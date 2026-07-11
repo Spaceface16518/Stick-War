@@ -507,6 +507,21 @@ fn acquire_targets(
     }
 }
 
+#[derive(Clone, Copy)]
+struct BattlefieldSnapshot {
+    entity: Entity,
+    team: Team,
+    x: f32,
+    kind: Option<UnitKind>,
+    controlled: bool,
+}
+
+impl BattlefieldSnapshot {
+    fn is_uncontrolled_combat_unit(self) -> bool {
+        !self.controlled && matches!(self.kind, Some(UnitKind::Swordsman | UnitKind::Archer))
+    }
+}
+
 fn move_combat_units(
     mut commands: Commands,
     time: Res<Time>,
@@ -539,19 +554,18 @@ fn move_combat_units(
         >,
     )>,
 ) {
-    let snapshot: Vec<(Entity, Team, f32, UnitKind, bool)> = queries
+    let snapshot: Vec<BattlefieldSnapshot> = queries
         .p0()
         .iter()
-        .filter(|(_, _, _, kind, _)| kind.is_some_and(|kind| *kind != UnitKind::Miner))
-        .map(|(entity, team, transform, kind, controlled)| {
-            (
+        .map(
+            |(entity, team, transform, kind, controlled)| BattlefieldSnapshot {
                 entity,
-                *team,
-                transform.translation.x,
-                kind.copied().unwrap(),
+                team: *team,
+                x: transform.translation.x,
+                kind: kind.copied(),
                 controlled,
-            )
-        })
+            },
+        )
         .collect();
     for (entity, team, speed, mut transform, attack, mode, kind, mut state, target) in
         &mut queries.p1()
@@ -563,29 +577,27 @@ fn move_combat_units(
         };
         let combat_slot = snapshot
             .iter()
-            .filter(|(other, other_team, _, _, controlled)| {
-                *other_team == *team && !*controlled && other.index() < entity.index()
+            .filter(|other| {
+                other.team == *team
+                    && other.is_uncontrolled_combat_unit()
+                    && other.entity.index() < entity.index()
             })
             .count();
         let role_slot = snapshot
             .iter()
-            .filter(|(other, other_team, _, other_kind, controlled)| {
-                *other_team == *team
-                    && *other_kind == *kind
-                    && !*controlled
-                    && other.index() < entity.index()
+            .filter(|other| {
+                other.team == *team
+                    && other.kind == Some(*kind)
+                    && other.is_uncontrolled_combat_unit()
+                    && other.entity.index() < entity.index()
             })
             .count();
-        let fallback = if army_order == ArmyOrder::Attack {
-            transform.translation.x
-        } else {
-            formation_x(*team, army_order, *kind, role_slot, combat_slot, &c)
-        };
+        let order_destination = formation_x(*team, army_order, *kind, role_slot, combat_slot, &c);
         let destination = target.and_then(|target| {
             snapshot
                 .iter()
-                .find(|(entity, _, _, _, _)| *entity == target.0)
-                .map(|(_, _, x, _, _)| *x)
+                .find(|candidate| candidate.entity == target.0)
+                .map(|candidate| candidate.x)
         });
         if target.is_some() && destination.is_none() {
             commands.entity(entity).remove::<CurrentTarget>();
@@ -619,7 +631,9 @@ fn move_combat_units(
             } else {
                 *state = CombatUnitState::Attacking;
             }
-        } else if (fallback - transform.translation.x).abs() > c.formation_arrival_tolerance {
+        } else if (order_destination - transform.translation.x).abs()
+            > c.formation_arrival_tolerance
+        {
             *state = if army_order == ArmyOrder::Retreat {
                 CombatUnitState::Retreating
             } else {
@@ -627,7 +641,7 @@ fn move_combat_units(
             };
             transform.translation.x = step_toward(
                 transform.translation.x,
-                fallback,
+                order_destination,
                 speed.0,
                 time.delta_secs(),
             );

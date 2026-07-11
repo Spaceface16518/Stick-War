@@ -31,6 +31,14 @@ impl Team {
     pub fn direction(self) -> f32 {
         if self == Self::Player { 1.0 } else { -1.0 }
     }
+
+    pub fn opponent(self) -> Self {
+        if self == Self::Player {
+            Self::Enemy
+        } else {
+            Self::Player
+        }
+    }
 }
 
 #[derive(Component, Debug, Clone, Copy, Eq, PartialEq)]
@@ -302,7 +310,7 @@ pub fn formation_x(
         return retreat_x(team, c) - team.direction() * combat_slot as f32 * c.formation_spacing;
     }
     if order == ArmyOrder::Attack {
-        return statue_x(team, c);
+        return statue_x(team.opponent(), c);
     }
     let front_offset = match kind {
         UnitKind::Swordsman => c.swordsman_defense_offset + role_slot as f32 * c.formation_spacing,
@@ -479,6 +487,8 @@ mod tests {
     fn directions_are_correct() {
         assert_eq!(Team::Player.direction(), 1.0);
         assert_eq!(Team::Enemy.direction(), -1.0);
+        assert_eq!(Team::Player.opponent(), Team::Enemy);
+        assert_eq!(Team::Enemy.opponent(), Team::Player);
     }
     #[test]
     fn damage_is_clamped() {
@@ -545,6 +555,25 @@ mod tests {
             formation_x(Team::Player, ArmyOrder::Retreat, UnitKind::Archer, 0, 1, &c);
         assert_eq!(retreat_first - retreat_second, c.formation_spacing);
         assert!(retreat_first < c.player_statue_x);
+    }
+
+    #[test]
+    fn attack_order_advances_each_team_toward_the_opposing_statue() {
+        let c = GameConfig::default();
+        let player_destination = formation_x(
+            Team::Player,
+            ArmyOrder::Attack,
+            UnitKind::Swordsman,
+            0,
+            0,
+            &c,
+        );
+        let enemy_destination =
+            formation_x(Team::Enemy, ArmyOrder::Attack, UnitKind::Archer, 0, 0, &c);
+        assert_eq!(player_destination, c.enemy_statue_x);
+        assert_eq!(enemy_destination, c.player_statue_x);
+        assert!(player_destination > c.player_statue_x);
+        assert!(enemy_destination < c.enemy_statue_x);
     }
 
     #[test]
