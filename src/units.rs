@@ -34,7 +34,7 @@ fn limb(
     ));
 }
 
-fn stick_figure(commands: &mut Commands, root: Entity, team: Team, sword: bool) {
+fn stick_figure(commands: &mut Commands, root: Entity, team: Team, kind: UnitKind) {
     let color = team_color(team);
     commands.entity(root).with_children(|p| {
         piece(
@@ -79,7 +79,7 @@ fn stick_figure(commands: &mut Commands, root: Entity, team: Team, sword: bool) 
             0.35,
             LimbKind::RightLeg,
         );
-        if sword {
+        if kind == UnitKind::Swordsman {
             piece(
                 p,
                 Color::srgb(0.85, 0.85, 0.9),
@@ -209,7 +209,7 @@ pub fn spawn_miner(
             Visibility::default(),
         ))
         .id();
-    stick_figure(commands, root, team, false);
+    stick_figure(commands, root, team, UnitKind::Miner);
     root
 }
 
@@ -237,11 +237,48 @@ pub fn spawn_swordsman(
                 range: c.swordsman_range,
                 cooldown: Timer::from_seconds(c.swordsman_attack_seconds, TimerMode::Once),
             },
-            SwordsmanState::Idle,
+            AttackMode::Melee,
+            CombatUnitState::Idle,
             Transform::from_xyz(position.x, position.y, 6.0),
             Visibility::default(),
         ))
         .id();
-    stick_figure(commands, root, team, true);
+    stick_figure(commands, root, team, UnitKind::Swordsman);
+    root
+}
+
+pub fn spawn_archer(
+    commands: &mut Commands,
+    _meshes: &mut Assets<Mesh>,
+    _materials: &mut Assets<ColorMaterial>,
+    c: &GameConfig,
+    team: Team,
+    position: Vec2,
+) -> Entity {
+    let root = commands
+        .spawn((
+            BattleEntity,
+            Unit,
+            UnitKind::Archer,
+            team,
+            Health {
+                current: c.archer_health,
+                maximum: c.archer_health,
+            },
+            MoveSpeed(c.archer_speed),
+            Attack {
+                damage: c.archer_damage,
+                range: c.archer_range,
+                cooldown: Timer::from_seconds(c.archer_attack_seconds, TimerMode::Once),
+            },
+            AttackMode::Projectile {
+                speed: c.arrow_speed,
+            },
+            CombatUnitState::Idle,
+            Transform::from_xyz(position.x, position.y, 6.0),
+            Visibility::default(),
+        ))
+        .id();
+    stick_figure(commands, root, team, UnitKind::Archer);
     root
 }

@@ -27,6 +27,7 @@ enum MenuButton {
 enum BattleButton {
     TrainMiner,
     TrainSwordsman,
+    TrainArcher,
     Attack,
     Defend,
     Retreat,
@@ -154,11 +155,11 @@ fn setup_hud(mut commands: Commands) {
         ]),
         (Node{width:percent(100),padding:UiRect::all(px(8)),flex_direction:FlexDirection::Column,align_items:AlignItems::Center,..default()},children![
             (Node{justify_content:JustifyContent::Center,flex_wrap:FlexWrap::Wrap,..default()},children![]),
-            (Text::new("M/S train  |  1 Attack  2 Defend  3 Retreat  |  Tab control  A/D move  Space attack  Esc release"),text_style(15.0),TextColor(Color::WHITE),Node{margin:UiRect::top(px(5)),..default()})
+            (Text::new("M/S/R train  |  1 Attack  2 Defend  3 Retreat  |  Tab control  A/D move  Space attack  Esc release"),text_style(15.0),TextColor(Color::WHITE),Node{margin:UiRect::top(px(5)),..default()})
         ])
     ])).with_children(|root| {
         let mut row=root.spawn((Node{position_type:PositionType::Absolute,bottom:px(42),left:percent(0),width:percent(100),justify_content:JustifyContent::Center,flex_wrap:FlexWrap::Wrap,..default()},));
-        row.with_children(|p|{hud_button(p,"MINER [M]",BattleButton::TrainMiner);hud_button(p,"SWORD [S]",BattleButton::TrainSwordsman);hud_button(p,"ATTACK [1]",BattleButton::Attack);hud_button(p,"DEFEND [2]",BattleButton::Defend);hud_button(p,"RETREAT [3]",BattleButton::Retreat);});
+        row.with_children(|p|{hud_button(p,"MINER 50 [M]",BattleButton::TrainMiner);hud_button(p,"SWORD 100 [S]",BattleButton::TrainSwordsman);hud_button(p,"ARCHER 125 [R]",BattleButton::TrainArcher);hud_button(p,"ATTACK [1]",BattleButton::Attack);hud_button(p,"DEFEND [2]",BattleButton::Defend);hud_button(p,"RETREAT [3]",BattleButton::Retreat);});
     });
 }
 
@@ -182,6 +183,12 @@ fn battle_buttons(
                 train.write(TrainUnitRequest {
                     team: Team::Player,
                     kind: UnitKind::Swordsman,
+                });
+            }
+            BattleButton::TrainArcher => {
+                train.write(TrainUnitRequest {
+                    team: Team::Player,
+                    kind: UnitKind::Archer,
                 });
             }
             BattleButton::Attack => order.0 = ArmyOrder::Attack,

@@ -67,7 +67,7 @@ pub fn update_selection_markers(
 
 pub fn animate_walking(
     time: Res<Time>,
-    roots: Query<(Option<&MinerState>, Option<&SwordsmanState>), With<Unit>>,
+    roots: Query<(Option<&MinerState>, Option<&CombatUnitState>), With<Unit>>,
     mut limbs: Query<(&ChildOf, &Limb, &mut Transform)>,
 ) {
     let swing = (time.elapsed_secs() * 8.0).sin() * 0.4;
@@ -77,7 +77,7 @@ pub fn animate_walking(
         };
         let moving = miner.is_some_and(|state| *state != MinerState::Mining)
             || swordsman.is_some_and(|state| {
-                matches!(state, SwordsmanState::Moving | SwordsmanState::Retreating)
+                matches!(state, CombatUnitState::Moving | CombatUnitState::Retreating)
             });
         let direction = match limb.kind {
             LimbKind::LeftArm | LimbKind::RightLeg => 1.0,

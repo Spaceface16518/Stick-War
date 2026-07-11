@@ -36,6 +36,7 @@ impl Team {
 pub enum UnitKind {
     Miner,
     Swordsman,
+    Archer,
 }
 #[derive(Component)]
 pub struct Unit;
@@ -55,6 +56,11 @@ pub struct Attack {
     pub damage: f32,
     pub range: f32,
     pub cooldown: Timer,
+}
+#[derive(Component, Debug, Clone, Copy)]
+pub enum AttackMode {
+    Melee,
+    Projectile { speed: f32 },
 }
 #[derive(Component)]
 pub struct CurrentTarget(pub Entity);
@@ -90,7 +96,7 @@ pub struct MiningTimer(pub Timer);
 #[derive(Component)]
 pub struct CarriedGold(pub u32);
 #[derive(Component, Debug, Clone, Copy, Eq, PartialEq)]
-pub enum SwordsmanState {
+pub enum CombatUnitState {
     Idle,
     Moving,
     Attacking,
@@ -168,6 +174,13 @@ pub struct GameConfig {
     pub swordsman_damage: f32,
     pub swordsman_range: f32,
     pub swordsman_attack_seconds: f32,
+    pub archer_cost: u32,
+    pub archer_health: f32,
+    pub archer_speed: f32,
+    pub archer_damage: f32,
+    pub archer_range: f32,
+    pub archer_attack_seconds: f32,
+    pub arrow_speed: f32,
     pub statue_health: f32,
     pub defense_radius: f32,
     pub retreat_offset: f32,
@@ -195,6 +208,13 @@ impl Default for GameConfig {
             swordsman_damage: 20.0,
             swordsman_range: 55.0,
             swordsman_attack_seconds: 0.8,
+            archer_cost: 125,
+            archer_health: 70.0,
+            archer_speed: 95.0,
+            archer_damage: 15.0,
+            archer_range: 320.0,
+            archer_attack_seconds: 1.4,
+            arrow_speed: 500.0,
             statue_health: 500.0,
             defense_radius: 280.0,
             retreat_offset: 100.0,
@@ -274,10 +294,10 @@ pub fn try_purchase_unit(
     economy: &mut Economy,
     c: &GameConfig,
 ) -> bool {
-    let cost = if kind == UnitKind::Miner {
-        c.miner_cost
-    } else {
-        c.swordsman_cost
+    let cost = match kind {
+        UnitKind::Miner => c.miner_cost,
+        UnitKind::Swordsman => c.swordsman_cost,
+        UnitKind::Archer => c.archer_cost,
     };
     if economy.gold(team) < cost || economy.population(team) >= economy.population_limit {
         return false;

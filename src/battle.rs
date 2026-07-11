@@ -162,6 +162,12 @@ fn keyboard_orders(
             kind: UnitKind::Swordsman,
         });
     }
+    if keys.just_pressed(KeyCode::KeyR) {
+        train.write(TrainUnitRequest {
+            team: Team::Player,
+            kind: UnitKind::Archer,
+        });
+    }
     if keys.just_pressed(KeyCode::Digit1) {
         order.0 = ArmyOrder::Attack;
     }
@@ -190,7 +196,9 @@ fn cycle_control(
     }
     let mut choices: Vec<Entity> = swords
         .iter()
-        .filter(|(_, t, k)| **t == Team::Player && **k == UnitKind::Swordsman)
+        .filter(|(_, t, k)| {
+            **t == Team::Player && matches!(**k, UnitKind::Swordsman | UnitKind::Archer)
+        })
         .map(|(e, _, _)| e)
         .collect();
     choices.sort_by_key(|e| e.index());
@@ -213,18 +221,28 @@ fn cycle_control(
 fn enemy_controller(
     time: Res<Time>,
     mut ai: ResMut<EnemyController>,
-    miners: Query<(&Team, &UnitKind), With<Unit>>,
+    units: Query<(&Team, &UnitKind), With<Unit>>,
     mut train: MessageWriter<TrainUnitRequest>,
 ) {
     if !ai.spawn_timer.tick(time.delta()).just_finished() {
         return;
     }
-    let count = miners
+    let miner_count = units
         .iter()
         .filter(|(t, k)| **t == Team::Enemy && **k == UnitKind::Miner)
         .count();
-    ai.next_unit = if count < 2 {
+    let swords = units
+        .iter()
+        .filter(|(t, k)| **t == Team::Enemy && **k == UnitKind::Swordsman)
+        .count();
+    let archers = units
+        .iter()
+        .filter(|(t, k)| **t == Team::Enemy && **k == UnitKind::Archer)
+        .count();
+    ai.next_unit = if miner_count < 2 {
         UnitKind::Miner
+    } else if swords >= (archers + 1) * 2 {
+        UnitKind::Archer
     } else {
         UnitKind::Swordsman
     };
@@ -263,6 +281,16 @@ fn process_training(
             }
             UnitKind::Swordsman => {
                 spawn_swordsman(
+                    &mut commands,
+                    &mut meshes,
+                    &mut materials,
+                    &c,
+                    request.team,
+                    pos,
+                );
+            }
+            UnitKind::Archer => {
+                spawn_archer(
                     &mut commands,
                     &mut meshes,
                     &mut materials,
@@ -414,7 +442,7 @@ fn move_swordsmen(
                 &MoveSpeed,
                 &mut Transform,
                 &Attack,
-                &mut SwordsmanState,
+                &mut CombatUnitState,
                 Option<&CurrentTarget>,
             ),
             (With<Unit>, Without<Controlled>),
@@ -475,17 +503,17 @@ fn move_swordsmen(
         }
         if let Some(dest) = destination {
             if (dest - transform.translation.x).abs() > attack.range {
-                *state = SwordsmanState::Moving;
+                *state = CombatUnitState::Moving;
                 transform.translation.x =
                     step_toward(transform.translation.x, dest, speed.0, time.delta_secs());
             } else {
-                *state = SwordsmanState::Attacking;
+                *state = CombatUnitState::Attacking;
             }
         } else if (fallback - transform.translation.x).abs() > 2.0 {
             *state = if army_order == ArmyOrder::Retreat {
-                SwordsmanState::Retreating
+                CombatUnitState::Retreating
             } else {
-                SwordsmanState::Moving
+                CombatUnitState::Moving
             };
             transform.translation.x = step_toward(
                 transform.translation.x,
@@ -494,7 +522,7 @@ fn move_swordsmen(
                 time.delta_secs(),
             );
         } else {
-            *state = SwordsmanState::Idle;
+            *state = CombatUnitState::Idle;
         }
     }
 }
