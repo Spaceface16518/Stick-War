@@ -700,6 +700,7 @@ fn automatic_attacks(
                 &mut messages,
                 &c,
                 owner,
+                *team,
                 transform,
                 target.0,
                 target_transform.translation.x,
@@ -744,6 +745,7 @@ fn controlled_attack(
                 &mut messages,
                 &c,
                 owner,
+                *team,
                 transform,
                 entity,
                 target_transform.translation.x,
@@ -760,6 +762,7 @@ fn perform_attack(
     messages: &mut MessageWriter<DamageMessage>,
     c: &GameConfig,
     owner: Entity,
+    team: Team,
     transform: &Transform,
     target: Entity,
     target_x: f32,
@@ -779,6 +782,7 @@ fn perform_attack(
                 BattleEntity,
                 Projectile {
                     owner,
+                    team,
                     damage,
                     velocity: Vec2::new(
                         direction * c.arrow_horizontal_speed,
@@ -808,7 +812,14 @@ fn move_projectiles(
     mut damage: MessageWriter<DamageMessage>,
     mut projectiles: Query<(Entity, &mut Projectile, &mut Transform)>,
     objects: Query<
-        (Entity, &Transform, Has<Unit>, Has<Statue>, Option<&Health>),
+        (
+            Entity,
+            &Team,
+            &Transform,
+            Has<Unit>,
+            Has<Statue>,
+            Option<&Health>,
+        ),
         (
             Or<(With<Unit>, With<Statue>, With<GoldDeposit>)>,
             Without<Projectile>,
@@ -831,8 +842,10 @@ fn move_projectiles(
 
         let hit = objects
             .iter()
-            .filter(|(target, _, _, _, _)| *target != projectile.owner)
-            .filter(|(_, target, unit, statue, _)| {
+            .filter(|(target, team, _, _, _, _)| {
+                *target != projectile.owner && projectile_can_hit(projectile.team, **team)
+            })
+            .filter(|(_, _, target, unit, statue, _)| {
                 let (half_width, bottom, top) = if *statue {
                     (
                         c.statue_collision_half_width,
@@ -862,13 +875,13 @@ fn move_projectiles(
                 )
             })
             .min_by(|a, b| {
-                a.1.translation
+                a.2.translation
                     .xy()
                     .distance_squared(from)
-                    .total_cmp(&b.1.translation.xy().distance_squared(from))
+                    .total_cmp(&b.2.translation.xy().distance_squared(from))
             });
         let hit_ground = from.y >= c.ground_y && to.y <= c.ground_y;
-        if let Some((target, _, _, _, health)) = hit {
+        if let Some((target, _, _, _, _, health)) = hit {
             if health.is_some() {
                 damage.write(DamageMessage {
                     target,

@@ -76,6 +76,7 @@ pub enum AttackMode {
 #[derive(Component, Debug, Clone, Copy)]
 pub struct Projectile {
     pub owner: Entity,
+    pub team: Team,
     pub damage: f32,
     pub velocity: Vec2,
     pub lifetime_remaining: f32,
@@ -335,6 +336,9 @@ pub fn activation_range(kind: UnitKind, c: &GameConfig) -> f32 {
         UnitKind::Swordsman => c.swordsman_activation_range,
         UnitKind::Archer => c.archer_activation_range,
     }
+}
+pub fn projectile_can_hit(projectile_team: Team, object_team: Team) -> bool {
+    projectile_team != object_team
 }
 pub fn projectile_step(position: Vec2, velocity: Vec2, gravity: f32, dt: f32) -> (Vec2, Vec2) {
     let next = Vec2::new(
@@ -619,6 +623,14 @@ mod tests {
             Vec2::new(12.0, -5.0),
             Vec2::new(18.0, 25.0),
         ));
+    }
+
+    #[test]
+    fn arrows_pass_through_friendlies_and_hit_enemies() {
+        assert!(!projectile_can_hit(Team::Player, Team::Player));
+        assert!(!projectile_can_hit(Team::Enemy, Team::Enemy));
+        assert!(projectile_can_hit(Team::Player, Team::Enemy));
+        assert!(projectile_can_hit(Team::Enemy, Team::Player));
     }
 
     #[test]
