@@ -15,8 +15,11 @@ impl Plugin for GamePlugin {
 fn setup_camera(mut commands: Commands) {
     commands.spawn((
         Camera2d,
+        BattleCamera,
         Projection::Orthographic(OrthographicProjection {
-            scale: 2.75,
+            scaling_mode: bevy::camera::ScalingMode::FixedVertical {
+                viewport_height: 720.0,
+            },
             ..OrthographicProjection::default_2d()
         }),
     ));

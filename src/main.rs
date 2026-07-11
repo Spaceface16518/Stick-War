@@ -14,6 +14,7 @@ fn main() {
             primary_window: Some(Window {
                 title: "Stick War".into(),
                 resolution: (1280, 720).into(),
+                resizable: true,
                 ..default()
             }),
             ..default()

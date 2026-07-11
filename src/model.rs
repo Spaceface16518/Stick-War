@@ -45,6 +45,8 @@ pub struct Statue;
 #[derive(Component)]
 pub struct GoldDeposit;
 #[derive(Component)]
+pub struct BattleCamera;
+#[derive(Component)]
 pub struct Health {
     pub current: f32,
     pub maximum: f32,
@@ -192,6 +194,9 @@ pub struct GameConfig {
     pub defense_radius: f32,
     pub retreat_offset: f32,
     pub formation_spacing: f32,
+    pub camera_view_height: f32,
+    pub camera_pan_speed: f32,
+    pub camera_dead_zone: f32,
 }
 impl Default for GameConfig {
     fn default() -> Self {
@@ -226,6 +231,9 @@ impl Default for GameConfig {
             defense_radius: 280.0,
             retreat_offset: 100.0,
             formation_spacing: 72.0,
+            camera_view_height: 720.0,
+            camera_pan_speed: 650.0,
+            camera_dead_zone: 170.0,
         }
     }
 }
@@ -298,6 +306,13 @@ pub fn target_distance(kind: UnitKind, attack_range: f32) -> f32 {
     } else {
         attack_range
     }
+}
+pub fn camera_half_width(view_height: f32, aspect_ratio: f32) -> f32 {
+    view_height * aspect_ratio.max(0.01) * 0.5
+}
+pub fn clamp_camera_x(desired: f32, battlefield_half_width: f32, half_view_width: f32) -> f32 {
+    let limit = (battlefield_half_width - half_view_width).max(0.0);
+    desired.clamp(-limit, limit)
 }
 pub fn step_toward(current: f32, destination: f32, speed: f32, dt: f32) -> f32 {
     let difference = destination - current;

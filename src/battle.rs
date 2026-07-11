@@ -28,7 +28,10 @@ impl Plugin for BattlePlugin {
                 .chain()
                 .run_if(in_state(AppState::Battle)),
         )
-        .add_systems(OnEnter(AppState::Battle), setup_battle)
+        .add_systems(
+            OnEnter(AppState::Battle),
+            (setup_battle, reset_battle_camera).chain(),
+        )
         .add_systems(OnExit(AppState::Battle), cleanup_battle)
         .add_systems(
             Update,
@@ -72,10 +75,63 @@ impl Plugin for BattlePlugin {
                 update_health_bars,
                 update_selection_markers,
                 animate_walking,
+                update_battle_camera,
             )
                 .in_set(BattleSet::Presentation),
         );
     }
+}
+
+fn reset_battle_camera(
+    c: Res<GameConfig>,
+    window: Single<&Window>,
+    mut camera: Single<&mut Transform, With<BattleCamera>>,
+) {
+    let aspect = window.width() / window.height().max(1.0);
+    camera.translation.x = clamp_camera_x(
+        c.player_statue_x,
+        c.battlefield_half_width,
+        camera_half_width(c.camera_view_height, aspect),
+    );
+    camera.translation.y = 0.0;
+}
+
+fn update_battle_camera(
+    keys: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
+    c: Res<GameConfig>,
+    window: Single<&Window>,
+    controlled: Query<&Transform, (With<Controlled>, Without<BattleCamera>)>,
+    mut camera: Single<&mut Transform, With<BattleCamera>>,
+) {
+    let half_view = camera_half_width(
+        c.camera_view_height,
+        window.width() / window.height().max(1.0),
+    );
+    let desired = if let Some(unit) = controlled.iter().next() {
+        let offset = unit.translation.x - camera.translation.x;
+        if offset.abs() > c.camera_dead_zone {
+            unit.translation.x - offset.signum() * c.camera_dead_zone
+        } else {
+            camera.translation.x
+        }
+    } else {
+        let direction =
+            keys.pressed(KeyCode::ArrowRight) as i8 - keys.pressed(KeyCode::ArrowLeft) as i8;
+        camera.translation.x + direction as f32 * c.camera_pan_speed * time.delta_secs()
+    };
+    let target = clamp_camera_x(desired, c.battlefield_half_width, half_view);
+    let follow_speed = if controlled.is_empty() {
+        c.camera_pan_speed
+    } else {
+        900.0
+    };
+    camera.translation.x = step_toward(
+        camera.translation.x,
+        target,
+        follow_speed,
+        time.delta_secs(),
+    );
 }
 
 fn setup_battle(
