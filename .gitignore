@@ -1,3 +1,4 @@
-/target
-/bevy
+/target/
+/dist/
+/bevy/
 .DS_Store

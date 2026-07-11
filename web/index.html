@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111318" />
+    <title>Stick War</title>
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #111318;
+      }
+
+      #bevy {
+        display: block;
+        width: 100%;
+        height: 100%;
+        outline: none;
+      }
+
+      #status {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        color: #f4f4f4;
+        font: 600 1rem/1.5 system-ui, sans-serif;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="bevy" tabindex="0"></canvas>
+    <div id="status" role="status">Loading Stick War…</div>
+    <script type="module" src="./bootstrap.js"></script>
+  </body>
+</html>

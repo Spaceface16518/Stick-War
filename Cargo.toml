@@ -28,3 +28,10 @@ codegen-units = 1
 # Do a second optimization pass over the entire program, including dependencies.
 # Slows compile times, marginal improvements.
 lto = "thin"
+
+# Size-oriented profile for the browser build. Keep this separate from the
+# native release profile so desktop builds retain their current settings.
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+strip = "debuginfo"

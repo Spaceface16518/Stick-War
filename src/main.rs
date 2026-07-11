@@ -16,6 +16,8 @@ fn main() {
                 title: "Stick War".into(),
                 resolution: (1280, 720).into(),
                 resizable: true,
+                canvas: Some("#bevy".into()),
+                fit_canvas_to_parent: true,
                 ..default()
             }),
             ..default()

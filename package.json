@@ -1,0 +1,8 @@
+{
+  "name": "stick-war-web",
+  "private": true,
+  "scripts": {
+    "build:web": "node scripts/build-web.mjs",
+    "serve:web": "npx --yes serve@latest dist"
+  }
+}
