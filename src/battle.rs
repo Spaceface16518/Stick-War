@@ -102,7 +102,7 @@ fn reset_battle_camera(
 }
 
 fn update_battle_camera(
-    keys: Res<ButtonInput<KeyCode>>,
+    input: (Res<ButtonInput<KeyCode>>, Res<Touches>),
     mut mouse_wheel: MessageReader<MouseWheel>,
     time: Res<Time>,
     c: Res<GameConfig>,
@@ -110,6 +110,7 @@ fn update_battle_camera(
     controlled: Query<&Transform, (With<Controlled>, Without<BattleCamera>)>,
     mut camera: Single<&mut Transform, With<BattleCamera>>,
 ) {
+    let (keys, touches) = input;
     let scroll = mouse_wheel
         .read()
         .map(|event| {
@@ -127,6 +128,14 @@ fn update_battle_camera(
         c.camera.view_height,
         window.width() / window.height().max(1.0),
     );
+    let touch_pan = if touches.iter().count() == 1 {
+        touches
+            .iter()
+            .map(|touch| -touch.delta().x * c.camera.view_height / window.height().max(1.0))
+            .sum::<f32>()
+    } else {
+        0.0
+    };
     let desired = if let Some(unit) = controlled.iter().next() {
         let offset = unit.translation.x - camera.translation.x;
         if offset.abs() > c.camera.follow_dead_zone {
@@ -140,9 +149,12 @@ fn update_battle_camera(
         camera.translation.x
             + direction as f32 * c.camera.pan_speed * time.delta_secs()
             + scroll * c.camera.scroll_speed
+            + touch_pan
     };
     let target = clamp_camera_x(desired, c.battlefield.half_width, half_view);
-    let follow_speed = if controlled.is_empty() {
+    let follow_speed = if touch_pan != 0.0 {
+        f32::INFINITY
+    } else if controlled.is_empty() {
         c.camera.pan_speed
     } else {
         900.0
