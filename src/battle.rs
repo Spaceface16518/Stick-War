@@ -160,7 +160,7 @@ fn setup_battle(
         spawn_timer: Timer::from_seconds(c.ai.enemy_spawn_seconds, TimerMode::Repeating),
         next_unit: UnitKind::Miner,
     });
-    commands.insert_resource(ProjectileRandom(c.units.archer.arrow.random_seed));
+    commands.insert_resource(CombatRandom(c.combat.random_seed));
     spawn_battlefield(&mut commands, &mut meshes, &mut materials, &c);
     for team in [Team::Player, Team::Enemy] {
         spawn_statue(
@@ -200,7 +200,7 @@ fn cleanup_battle(mut commands: Commands, entities: Query<Entity, With<BattleEnt
     commands.remove_resource::<PlayerArmyOrder>();
     commands.remove_resource::<PassiveIncome>();
     commands.remove_resource::<EnemyController>();
-    commands.remove_resource::<ProjectileRandom>();
+    commands.remove_resource::<CombatRandom>();
 }
 
 fn passive_income(
@@ -697,7 +697,7 @@ fn automatic_attacks(
     targets: Query<(&Transform, Option<&MotionEstimate>, Has<Statue>)>,
     order: Res<PlayerArmyOrder>,
     c: Res<GameConfig>,
-    mut random: ResMut<ProjectileRandom>,
+    mut random: ResMut<CombatRandom>,
     mut units: Query<
         (
             Entity,
@@ -705,12 +705,13 @@ fn automatic_attacks(
             &Transform,
             &CurrentTarget,
             &AttackMode,
+            &UnitKind,
             &mut Attack,
         ),
         Without<Controlled>,
     >,
 ) {
-    for (owner, team, transform, target, mode, mut attack) in &mut units {
+    for (owner, team, transform, target, mode, kind, mut attack) in &mut units {
         if *team == Team::Player && order.0 == ArmyOrder::Retreat {
             continue;
         }
@@ -735,7 +736,7 @@ fn automatic_attacks(
                 *mode,
                 attack.damage,
             );
-            attack.cooldown.reset();
+            reset_attack_cooldown(*kind, &mut attack, &c, &mut random);
         }
     }
 }
@@ -745,9 +746,19 @@ fn controlled_attack(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     c: Res<GameConfig>,
-    mut random: ResMut<ProjectileRandom>,
+    mut random: ResMut<CombatRandom>,
     mut messages: MessageWriter<DamageMessage>,
-    mut units: Query<(Entity, &Team, &Transform, &AttackMode, &mut Attack), With<Controlled>>,
+    mut units: Query<
+        (
+            Entity,
+            &Team,
+            &Transform,
+            &AttackMode,
+            &UnitKind,
+            &mut Attack,
+        ),
+        With<Controlled>,
+    >,
     targets: Query<
         (
             Entity,
@@ -759,7 +770,7 @@ fn controlled_attack(
         (Or<(With<Unit>, With<Statue>)>, Without<Projectile>),
     >,
 ) {
-    for (owner, team, transform, mode, mut attack) in &mut units {
+    for (owner, team, transform, mode, kind, mut attack) in &mut units {
         attack.cooldown.tick(time.delta());
         if !keys.just_pressed(KeyCode::Space) || !attack.cooldown.is_finished() {
             continue;
@@ -790,16 +801,41 @@ fn controlled_attack(
                 *mode,
                 attack.damage,
             );
-            attack.cooldown.reset();
+            reset_attack_cooldown(*kind, &mut attack, &c, &mut random);
         }
     }
+}
+
+fn reset_attack_cooldown(
+    kind: UnitKind,
+    attack: &mut Attack,
+    c: &GameConfig,
+    random: &mut CombatRandom,
+) {
+    let duration_seconds = match kind {
+        UnitKind::Swordsman => {
+            let timing = &c.units.swordsman.attack_delay;
+            varied_attack_cooldown_seconds(
+                c.units.swordsman.attack_cooldown_seconds,
+                timing.standard_milliseconds,
+                timing.variation_milliseconds,
+                next_combat_variation(&mut random.0),
+            )
+        }
+        UnitKind::Archer => c.units.archer.attack_cooldown_seconds,
+        UnitKind::Miner => return,
+    };
+    attack
+        .cooldown
+        .set_duration(std::time::Duration::from_secs_f32(duration_seconds));
+    attack.cooldown.reset();
 }
 
 fn perform_attack(
     commands: &mut Commands,
     messages: &mut MessageWriter<DamageMessage>,
     c: &GameConfig,
-    random: &mut ProjectileRandom,
+    random: &mut CombatRandom,
     owner: Entity,
     team: Team,
     transform: &Transform,
@@ -830,8 +866,8 @@ fn perform_attack(
             };
             let target_position = target_transform.translation.xy() + Vec2::Y * aim_height;
             let variation = Vec2::new(
-                next_projectile_variation(&mut random.0),
-                next_projectile_variation(&mut random.0),
+                next_combat_variation(&mut random.0),
+                next_combat_variation(&mut random.0),
             );
             let velocity = ballistic_launch_velocity(
                 origin,

@@ -6,6 +6,7 @@ pub struct GameConfig {
     pub battlefield: BattlefieldConfig,
     pub economy: EconomyConfig,
     pub units: UnitConfigs,
+    pub combat: CombatConfig,
     pub ai: AiConfig,
     pub formation: FormationConfig,
     pub collision: CollisionConfig,
@@ -64,6 +65,18 @@ pub struct CombatUnitConfig {
     pub weapon_range: f32,
     pub attack_cooldown_seconds: f32,
     pub activation_range: f32,
+    pub attack_delay: AttackDelayVariation,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AttackDelayVariation {
+    pub standard_milliseconds: f32,
+    pub variation_milliseconds: f32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CombatConfig {
+    pub random_seed: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -93,7 +106,6 @@ pub struct ArrowConfig {
     pub speed_variation: f32,
     pub vertical_variation: f32,
     pub velocity_smoothing: f32,
-    pub random_seed: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]

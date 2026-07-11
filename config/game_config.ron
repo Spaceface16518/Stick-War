@@ -31,6 +31,10 @@
             weapon_range: 55.0,
             attack_cooldown_seconds: 0.8,
             activation_range: 430.0,
+            attack_delay: (
+                standard_milliseconds: 10.0,
+                variation_milliseconds: 5.0,
+            ),
         ),
         archer: (
             cost: 125,
@@ -54,10 +58,12 @@
                 speed_variation: 0.018,
                 vertical_variation: 14.0,
                 velocity_smoothing: 0.35,
-                random_seed: 6840335469066365901,
             ),
         ),
         statue: (health: 500.0),
+    ),
+    combat: (
+        random_seed: 6840335469066365901,
     ),
     ai: (
         defense_radius: 280.0,

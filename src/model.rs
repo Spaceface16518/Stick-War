@@ -201,7 +201,7 @@ pub struct EnemyController {
     pub next_unit: UnitKind,
 }
 #[derive(Resource)]
-pub struct ProjectileRandom(pub u64);
+pub struct CombatRandom(pub u64);
 
 pub fn statue_x(team: Team, c: &GameConfig) -> f32 {
     if team == Team::Player {
@@ -304,10 +304,20 @@ pub fn ballistic_launch_velocity(
     Vec2::new(velocity_x, velocity_y)
 }
 
-pub fn next_projectile_variation(state: &mut u64) -> f32 {
+pub fn next_combat_variation(state: &mut u64) -> f32 {
     *state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
     let normalized = ((*state >> 40) as u32) as f32 / ((1_u32 << 24) - 1) as f32;
     normalized * 2.0 - 1.0
+}
+pub fn varied_attack_cooldown_seconds(
+    base_seconds: f32,
+    standard_milliseconds: f32,
+    variation_milliseconds: f32,
+    random_sample: f32,
+) -> f32 {
+    let delay_milliseconds =
+        standard_milliseconds + random_sample.clamp(-1.0, 1.0) * variation_milliseconds;
+    base_seconds + delay_milliseconds.max(0.0) / 1000.0
 }
 pub fn projectile_step(position: Vec2, velocity: Vec2, gravity: f32, dt: f32) -> (Vec2, Vec2) {
     let next = Vec2::new(
@@ -651,15 +661,43 @@ mod tests {
     }
 
     #[test]
-    fn projectile_variation_is_small_deterministic_and_bounded() {
+    fn combat_variation_is_small_deterministic_and_bounded() {
         let mut first_seed = 42;
         let mut second_seed = 42;
         for _ in 0..32 {
-            let first = next_projectile_variation(&mut first_seed);
-            let second = next_projectile_variation(&mut second_seed);
+            let first = next_combat_variation(&mut first_seed);
+            let second = next_combat_variation(&mut second_seed);
             assert_eq!(first, second);
             assert!((-1.0..=1.0).contains(&first));
         }
+    }
+
+    #[test]
+    fn sword_attack_delay_stays_within_configured_millisecond_window() {
+        let c = load_game_config();
+        let sword = &c.units.swordsman;
+        let timing = &sword.attack_delay;
+        let fastest = varied_attack_cooldown_seconds(
+            sword.attack_cooldown_seconds,
+            timing.standard_milliseconds,
+            timing.variation_milliseconds,
+            -1.0,
+        );
+        let midpoint = varied_attack_cooldown_seconds(
+            sword.attack_cooldown_seconds,
+            timing.standard_milliseconds,
+            timing.variation_milliseconds,
+            0.0,
+        );
+        let slowest = varied_attack_cooldown_seconds(
+            sword.attack_cooldown_seconds,
+            timing.standard_milliseconds,
+            timing.variation_milliseconds,
+            1.0,
+        );
+        assert!((fastest - 0.805).abs() < 0.0001);
+        assert!((midpoint - 0.810).abs() < 0.0001);
+        assert!((slowest - 0.815).abs() < 0.0001);
     }
 
     #[test]
