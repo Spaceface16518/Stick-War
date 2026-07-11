@@ -27,18 +27,13 @@ impl Plugin for BattlePlugin {
                 BattleSet::Presentation,
             )
                 .chain()
-                .run_if(in_gameplay),
+                .run_if(in_state(GameplayState::Active)),
         )
         .add_systems(
-            OnEnter(AppState::Battle),
+            OnEnter(GameplayState::Active),
             (setup_battle, reset_battle_camera).chain(),
         )
-        .add_systems(
-            OnEnter(AppState::Sandbox),
-            (setup_battle, reset_battle_camera).chain(),
-        )
-        .add_systems(OnExit(AppState::Battle), cleanup_battle)
-        .add_systems(OnExit(AppState::Sandbox), cleanup_battle)
+        .add_systems(OnExit(GameplayState::Active), cleanup_battle)
         .add_systems(
             Update,
             (keyboard_orders, cycle_control, process_training_requests).in_set(BattleSet::Input),
@@ -99,13 +94,9 @@ impl Plugin for BattlePlugin {
             Update,
             update_battle_camera
                 .in_set(BattleSet::Presentation)
-                .run_if(in_gameplay),
+                .run_if(in_state(GameplayState::Active)),
         );
     }
-}
-
-fn in_gameplay(state: Res<State<AppState>>) -> bool {
-    matches!(state.get(), AppState::Battle | AppState::Sandbox)
 }
 
 fn simulation_running(settings: Option<Res<SandboxSettings>>) -> bool {

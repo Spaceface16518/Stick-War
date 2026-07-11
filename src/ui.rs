@@ -7,9 +7,11 @@ impl Plugin for UiPlugin {
         app.add_systems(OnEnter(AppState::MainMenu), setup_menu)
             .add_systems(OnExit(AppState::MainMenu), cleanup::<MainMenuEntity>)
             .add_systems(Update, menu_buttons.run_if(in_state(AppState::MainMenu)))
-            .add_systems(OnEnter(AppState::Battle), setup_hud)
-            .add_systems(OnEnter(AppState::Sandbox), setup_hud)
-            .add_systems(Update, (battle_buttons, update_hud).run_if(in_gameplay))
+            .add_systems(OnEnter(GameplayState::Active), setup_hud)
+            .add_systems(
+                Update,
+                (battle_buttons, update_hud).run_if(in_state(GameplayState::Active)),
+            )
             .add_systems(OnEnter(AppState::Results), setup_results)
             .add_systems(OnExit(AppState::Results), cleanup::<ResultsEntity>)
             .add_systems(Update, results_buttons.run_if(in_state(AppState::Results)));
@@ -53,10 +55,6 @@ struct HudData<'w> {
     settings: Res<'w, SandboxSettings>,
     clock: Res<'w, BattleClock>,
     training: Res<'w, TrainingQueue>,
-}
-
-fn in_gameplay(state: Res<State<AppState>>) -> bool {
-    matches!(state.get(), AppState::Battle | AppState::Sandbox)
 }
 
 fn root_node() -> Node {

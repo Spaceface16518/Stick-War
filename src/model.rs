@@ -10,6 +10,27 @@ pub enum AppState {
     Results,
 }
 
+/// States that share the battlefield lifecycle and simulation systems.
+///
+/// Add new playable modes here so setup, cleanup, UI, and system scheduling
+/// stay centralized instead of duplicating state registrations.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum GameplayState {
+    Interface,
+    Active,
+}
+
+impl ComputedStates for GameplayState {
+    type SourceStates = AppState;
+
+    fn compute(state: AppState) -> Option<Self> {
+        match state {
+            AppState::Battle | AppState::Sandbox => Some(Self::Active),
+            AppState::MainMenu | AppState::Results => Some(Self::Interface),
+        }
+    }
+}
+
 #[derive(Resource, Debug, Clone, Copy)]
 pub enum BattleResult {
     Victory,
@@ -572,6 +593,25 @@ mod tests {
         assert_eq!(Team::Enemy.direction(), -1.0);
         assert_eq!(Team::Player.opponent(), Team::Enemy);
         assert_eq!(Team::Enemy.opponent(), Team::Player);
+    }
+    #[test]
+    fn gameplay_state_groups_all_playable_modes() {
+        assert_eq!(
+            GameplayState::compute(AppState::Battle),
+            Some(GameplayState::Active)
+        );
+        assert_eq!(
+            GameplayState::compute(AppState::Sandbox),
+            Some(GameplayState::Active)
+        );
+        assert_eq!(
+            GameplayState::compute(AppState::MainMenu),
+            Some(GameplayState::Interface)
+        );
+        assert_eq!(
+            GameplayState::compute(AppState::Results),
+            Some(GameplayState::Interface)
+        );
     }
     #[test]
     fn damage_is_clamped() {
