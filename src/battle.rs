@@ -1,4 +1,5 @@
 use crate::{model::*, rendering::*, units::*};
+use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 
 pub struct BattlePlugin;
@@ -102,12 +103,26 @@ fn reset_battle_camera(
 
 fn update_battle_camera(
     keys: Res<ButtonInput<KeyCode>>,
+    mut mouse_wheel: MessageReader<MouseWheel>,
     time: Res<Time>,
     c: Res<GameConfig>,
     window: Single<&Window>,
     controlled: Query<&Transform, (With<Controlled>, Without<BattleCamera>)>,
     mut camera: Single<&mut Transform, With<BattleCamera>>,
 ) {
+    let scroll = mouse_wheel
+        .read()
+        .map(|event| {
+            let scale = match event.unit {
+                MouseScrollUnit::Line => 1.0,
+                MouseScrollUnit::Pixel => 1.0 / MouseScrollUnit::SCROLL_UNIT_CONVERSION_FACTOR,
+            };
+            // Scroll deltas describe content movement. A camera must move in the
+            // opposite direction for the battlefield to follow the host OS's
+            // configured scrolling direction.
+            -event.x * scale
+        })
+        .sum::<f32>();
     let half_view = camera_half_width(
         c.camera.view_height,
         window.width() / window.height().max(1.0),
@@ -122,7 +137,9 @@ fn update_battle_camera(
     } else {
         let direction =
             keys.pressed(KeyCode::ArrowRight) as i8 - keys.pressed(KeyCode::ArrowLeft) as i8;
-        camera.translation.x + direction as f32 * c.camera.pan_speed * time.delta_secs()
+        camera.translation.x
+            + direction as f32 * c.camera.pan_speed * time.delta_secs()
+            + scroll * c.camera.scroll_speed
     };
     let target = clamp_camera_x(desired, c.battlefield.half_width, half_view);
     let follow_speed = if controlled.is_empty() {

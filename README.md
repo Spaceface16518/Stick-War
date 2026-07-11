@@ -19,7 +19,7 @@ The game is inspired by the simple silhouettes, tug-of-war battlefield, and mix 
 | Move controlled unit | <kbd>A</kbd>/<kbd>D</kbd> or arrow keys |
 | Attack with controlled unit | <kbd>Space</kbd> |
 | Release controlled unit | <kbd>Esc</kbd> |
-| Pan camera (when no unit is controlled) | Left/right arrow keys |
+| Pan camera (when no unit is controlled) | Sideways mouse/trackpad scroll or left/right arrow keys |
 
 The HUD buttons provide mouse controls for training and army orders.
 

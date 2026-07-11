@@ -90,6 +90,7 @@
     camera: (
         view_height: 720.0,
         pan_speed: 650.0,
+        scroll_speed: 140.0,
         follow_dead_zone: 170.0,
     ),
 )

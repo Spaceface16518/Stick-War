@@ -152,6 +152,7 @@ pub struct CollisionBounds {
 pub struct CameraConfig {
     pub view_height: f32,
     pub pan_speed: f32,
+    pub scroll_speed: f32,
     pub follow_dead_zone: f32,
 }
 
