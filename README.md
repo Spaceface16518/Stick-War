@@ -89,3 +89,6 @@ systems exist only in their respective states and use Bevy's reactive desktop
 update mode, so static UI screens sleep between window/input events. Entering a
 battle switches to the continuous game update mode required by simulation and
 animation; leaving it cleans up battle entities and restores reactive updates.
+This policy is centralized in the computed `RuntimeActivity` state: new screens
+default to reactive behavior, while states that run gameplay simulation must be
+explicitly classified as continuous.
