@@ -100,7 +100,7 @@ try {
 
   updateStatus("Starting Stick War…");
   loadingProgress.removeAttribute("value");
-  await init(wasmBytes);
+  await init({ module_or_path: wasmBytes });
   updateStatus("Finishing battlefield artwork…");
 } catch (error) {
   console.error("Failed to start Stick War", error);
