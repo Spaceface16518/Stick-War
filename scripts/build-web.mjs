@@ -14,6 +14,7 @@ const run = (command, args) =>
 await rm("dist", { recursive: true, force: true });
 await mkdir("dist", { recursive: true });
 await cp("web", "dist", { recursive: true });
+await cp("config", "dist/config", { recursive: true });
 
 await run("cargo", [
   "build",

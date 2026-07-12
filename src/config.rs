@@ -1,7 +1,11 @@
-use bevy::prelude::*;
+use bevy::{
+    asset::{AssetLoader, LoadContext, io::Reader},
+    prelude::*,
+    reflect::TypePath,
+};
 use serde::Deserialize;
 
-#[derive(Resource, Debug, Clone, Deserialize)]
+#[derive(Asset, Resource, TypePath, Debug, Clone, Deserialize)]
 pub struct GameConfig {
     pub battlefield: BattlefieldConfig,
     pub economy: EconomyConfig,
@@ -169,4 +173,29 @@ pub fn load_game_config() -> GameConfig {
     let source = std::fs::read_to_string("config/game_config.ron")
         .unwrap_or_else(|_| include_str!("../config/game_config.ron").to_owned());
     ron::from_str(&source).expect("config/game_config.ron must contain a valid GameConfig")
+}
+
+#[derive(Default, TypePath)]
+pub struct GameConfigLoader;
+
+impl AssetLoader for GameConfigLoader {
+    type Asset = GameConfig;
+    type Settings = ();
+    type Error = std::io::Error;
+
+    async fn load(
+        &self,
+        reader: &mut dyn Reader,
+        _settings: &Self::Settings,
+        _load_context: &mut LoadContext<'_>,
+    ) -> Result<Self::Asset, Self::Error> {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).await?;
+        ron::de::from_bytes(&bytes)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["ron"]
+    }
 }

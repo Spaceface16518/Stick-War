@@ -1,4 +1,4 @@
-pub use crate::config::{GameConfig, load_game_config};
+pub use crate::config::{GameConfig, GameConfigLoader, load_game_config};
 use bevy::prelude::*;
 
 #[derive(States, Debug, Clone, Copy, Default, Eq, PartialEq, Hash)]

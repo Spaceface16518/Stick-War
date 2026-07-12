@@ -7,6 +7,8 @@ impl Plugin for GamePlugin {
         app.init_state::<AppState>()
             .add_computed_state::<GameplayState>()
             .add_computed_state::<RuntimeActivity>()
+            .init_asset::<GameConfig>()
+            .init_asset_loader::<GameConfigLoader>()
             // UI-only states do not need a continuously running game loop. Start
             // reactively so the title screen is low-power from the first frame.
             .insert_resource(WinitSettings::desktop_app())
@@ -14,7 +16,8 @@ impl Plugin for GamePlugin {
             .add_message::<TrainUnitRequest>()
             .add_message::<DamageMessage>()
             .add_plugins((BattlePlugin, UiPlugin))
-            .add_systems(Startup, setup_camera)
+            .add_systems(Startup, (setup_camera, load_config_asset))
+            .add_systems(Update, apply_loaded_config)
             .add_systems(
                 OnEnter(RuntimeActivity::Interface),
                 use_reactive_update_mode,
@@ -23,6 +26,29 @@ impl Plugin for GamePlugin {
                 OnEnter(RuntimeActivity::Simulation),
                 use_continuous_update_mode,
             );
+    }
+}
+
+#[derive(Resource)]
+struct GameConfigHandle(Handle<GameConfig>);
+
+fn load_config_asset(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.insert_resource(GameConfigHandle(asset_server.load("game_config.ron")));
+}
+
+fn apply_loaded_config(
+    handle: Res<GameConfigHandle>,
+    configs: Res<Assets<GameConfig>>,
+    mut events: MessageReader<AssetEvent<GameConfig>>,
+    mut config: ResMut<GameConfig>,
+) {
+    if events
+        .read()
+        .any(|event| event.is_loaded_with_dependencies(handle.0.id()))
+        && let Some(loaded) = configs.get(&handle.0)
+    {
+        *config = loaded.clone();
+        debug!("Reloaded game config");
     }
 }
 
