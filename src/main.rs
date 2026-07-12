@@ -1,3 +1,4 @@
+mod animation;
 mod battle;
 mod config;
 mod game;

@@ -1,4 +1,5 @@
 use crate::{
+    animation::{CharacterAnimator, CharacterFacing},
     model::*,
     rendering::{add_health_bar, team_color},
 };
@@ -404,6 +405,8 @@ pub fn spawn_miner(
                 previous_position: position,
                 velocity: Vec2::ZERO,
             },
+            CharacterAnimator::new(UnitKind::Miner),
+            CharacterFacing::for_team(team),
             Transform::from_xyz(position.x, position.y, 5.0),
             Visibility::default(),
         ))
@@ -445,6 +448,8 @@ pub fn spawn_swordsman(
                 previous_position: position,
                 velocity: Vec2::ZERO,
             },
+            CharacterAnimator::new(UnitKind::Swordsman),
+            CharacterFacing::for_team(team),
             Transform::from_xyz(position.x, position.y, 6.0),
             Visibility::default(),
         ))
@@ -493,6 +498,8 @@ pub fn spawn_archer(
                 previous_position: position,
                 velocity: Vec2::ZERO,
             },
+            CharacterAnimator::new(UnitKind::Archer),
+            CharacterFacing::for_team(team),
             Transform::from_xyz(position.x, position.y, 6.0),
             Visibility::default(),
         ))

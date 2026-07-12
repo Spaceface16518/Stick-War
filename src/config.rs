@@ -11,6 +11,7 @@ pub struct GameConfig {
     pub formation: FormationConfig,
     pub collision: CollisionConfig,
     pub camera: CameraConfig,
+    pub graphics: GraphicsConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -154,6 +155,17 @@ pub struct CameraConfig {
     pub pan_speed: f32,
     pub scroll_speed: f32,
     pub follow_dead_zone: f32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GraphicsConfig {
+    /// Local solar hour in the range 0..24. This is a runtime resource after
+    /// startup, so menus or future levels can animate it without reloading RON.
+    pub initial_time_of_day: f32,
+    pub saturation_multiplier: f32,
+    pub brightness_multiplier: f32,
+    pub day_brightness: f32,
+    pub night_brightness: f32,
 }
 
 impl Default for GameConfig {

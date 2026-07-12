@@ -1,18 +1,24 @@
-use crate::{battle::BattlePlugin, model::*, ui::UiPlugin};
+use crate::{
+    animation::CharacterAnimationPlugin, battle::BattlePlugin, model::*, rendering::TimeOfDay,
+    ui::UiPlugin,
+};
 use bevy::{prelude::*, winit::WinitSettings};
 
 pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
+        let config = load_game_config();
+        let time_of_day = TimeOfDay::from_config(&config.graphics);
         app.init_state::<AppState>()
             .add_computed_state::<RuntimeActivity>()
             // UI-only states do not need a continuously running game loop. Start
             // reactively so the title screen is low-power from the first frame.
             .insert_resource(WinitSettings::desktop_app())
-            .insert_resource(load_game_config())
+            .insert_resource(config)
+            .insert_resource(time_of_day)
             .add_message::<TrainUnitRequest>()
             .add_message::<DamageMessage>()
-            .add_plugins((BattlePlugin, UiPlugin))
+            .add_plugins((CharacterAnimationPlugin, BattlePlugin, UiPlugin))
             .add_systems(Startup, setup_camera)
             .add_systems(
                 OnEnter(RuntimeActivity::Interface),

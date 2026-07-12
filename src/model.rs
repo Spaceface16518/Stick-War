@@ -22,7 +22,7 @@ pub struct BattleEntity;
 #[derive(Component)]
 pub struct ResultsEntity;
 
-#[derive(Component, Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Component, Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum Team {
     Player,
     Enemy,
@@ -41,7 +41,7 @@ impl Team {
     }
 }
 
-#[derive(Component, Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Component, Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum UnitKind {
     Miner,
     Swordsman,
@@ -68,7 +68,7 @@ pub struct Attack {
     pub range: f32,
     pub cooldown: Timer,
 }
-#[derive(Component, Debug, Clone, Copy)]
+#[derive(Component, Debug, Clone, Copy, Eq, PartialEq)]
 pub enum AttackMode {
     Melee,
     Projectile,
@@ -90,6 +90,14 @@ pub struct MotionEstimate {
 pub struct CurrentTarget(pub Entity);
 #[derive(Component)]
 pub struct Controlled;
+#[derive(Component, Debug, Clone, Copy)]
+pub struct PendingAttack {
+    pub target: Entity,
+    pub mode: AttackMode,
+    pub damage: f32,
+}
+#[derive(Component)]
+pub struct Dying;
 #[derive(Component)]
 pub struct HealthBarFill {
     pub owner: Entity,

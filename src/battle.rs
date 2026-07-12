@@ -1,15 +1,16 @@
-use crate::{model::*, rendering::*, units::*};
+use crate::{animation::*, model::*, rendering::*, units::*};
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 
 pub struct BattlePlugin;
 
 #[derive(SystemSet, Debug, Clone, Copy, Eq, PartialEq, Hash)]
-enum BattleSet {
+pub(crate) enum BattleSet {
     Input,
     Decisions,
     Movement,
     Combat,
+    Animation,
     Consequences,
     Presentation,
 }
@@ -23,6 +24,7 @@ impl Plugin for BattlePlugin {
                 BattleSet::Decisions,
                 BattleSet::Movement,
                 BattleSet::Combat,
+                BattleSet::Animation,
                 BattleSet::Consequences,
                 BattleSet::Presentation,
             )
@@ -67,6 +69,20 @@ impl Plugin for BattlePlugin {
         )
         .add_systems(
             Update,
+            (
+                attach_character_sprites,
+                select_character_animations,
+                update_character_facing,
+                advance_character_animations,
+                resolve_attack_animation_events,
+                apply_animation_frame_to_sprites,
+                despawn_finished_characters,
+            )
+                .chain()
+                .in_set(BattleSet::Animation),
+        )
+        .add_systems(
+            Update,
             (apply_damage, process_deaths, check_victory)
                 .chain()
                 .in_set(BattleSet::Consequences),
@@ -80,6 +96,8 @@ impl Plugin for BattlePlugin {
                 animate_weapons,
                 update_gold_sacks,
                 tick_timed_effects,
+                apply_time_of_day_to_sprites,
+                apply_time_of_day_to_materials,
                 update_battle_camera,
             )
                 .in_set(BattleSet::Presentation),
@@ -281,7 +299,7 @@ fn cycle_control(
     mut commands: Commands,
     keys: Res<ButtonInput<KeyCode>>,
     current: Query<Entity, With<Controlled>>,
-    swords: Query<(Entity, &Team, &UnitKind), With<Unit>>,
+    swords: Query<(Entity, &Team, &UnitKind), (With<Unit>, Without<Dying>)>,
 ) {
     if keys.just_pressed(KeyCode::Escape) {
         for entity in &current {
@@ -320,7 +338,7 @@ fn enemy_controller(
     time: Res<Time>,
     c: Res<GameConfig>,
     mut ai: ResMut<EnemyController>,
-    units: Query<(&Team, &UnitKind), With<Unit>>,
+    units: Query<(&Team, &UnitKind), (With<Unit>, Without<Dying>)>,
     mut train: MessageWriter<TrainUnitRequest>,
 ) {
     if !ai.spawn_timer.tick(time.delta()).just_finished() {
@@ -470,11 +488,11 @@ fn acquire_targets(
             Has<Controlled>,
             Option<&CurrentTarget>,
         ),
-        With<Attack>,
+        (With<Attack>, Without<Dying>),
     >,
     candidates: Query<
         (Entity, &Team, &Transform, Has<Unit>, Option<&CurrentTarget>),
-        Or<(With<Unit>, With<Statue>)>,
+        (Or<(With<Unit>, With<Statue>)>, Without<Dying>),
     >,
 ) {
     for (entity, team, kind, attacker_transform, controlled, target) in &attackers {
@@ -569,7 +587,7 @@ fn move_combat_units(
                 Option<&UnitKind>,
                 Has<Controlled>,
             ),
-            Or<(With<Unit>, With<Statue>)>,
+            (Or<(With<Unit>, With<Statue>)>, Without<Dying>),
         >,
         Query<
             (
@@ -583,7 +601,7 @@ fn move_combat_units(
                 &mut CombatUnitState,
                 Option<&CurrentTarget>,
             ),
-            (With<Unit>, Without<Controlled>),
+            (With<Unit>, Without<Controlled>, Without<Dying>),
         >,
     )>,
 ) {
@@ -722,8 +740,7 @@ fn update_motion_estimates(
 fn automatic_attacks(
     mut commands: Commands,
     time: Res<Time>,
-    mut messages: MessageWriter<DamageMessage>,
-    targets: Query<(&Transform, Option<&MotionEstimate>, Has<Statue>)>,
+    targets: Query<&Transform, Without<Dying>>,
     order: Res<PlayerArmyOrder>,
     c: Res<GameConfig>,
     mut random: ResMut<CombatRandom>,
@@ -736,35 +753,27 @@ fn automatic_attacks(
             &AttackMode,
             &UnitKind,
             &mut Attack,
+            &mut CharacterAnimator,
         ),
-        Without<Controlled>,
+        (Without<Controlled>, Without<Dying>, Without<PendingAttack>),
     >,
 ) {
-    for (owner, team, transform, target, mode, kind, mut attack) in &mut units {
+    for (owner, team, transform, target, mode, kind, mut attack, mut animator) in &mut units {
         if *team == Team::Player && order.0 == ArmyOrder::Retreat {
             continue;
         }
-        let Ok((target_transform, target_motion, target_is_statue)) = targets.get(target.0) else {
+        let Ok(target_transform) = targets.get(target.0) else {
             continue;
         };
         if (target_transform.translation.x - transform.translation.x).abs() <= attack.range
             && attack.cooldown.tick(time.delta()).is_finished()
         {
-            perform_attack(
-                &mut commands,
-                &mut messages,
-                &c,
-                &mut random,
-                owner,
-                *team,
-                transform,
-                target.0,
-                target_transform,
-                target_motion.map_or(Vec2::ZERO, |motion| motion.velocity),
-                target_is_statue,
-                *mode,
-                attack.damage,
-            );
+            commands.entity(owner).insert(PendingAttack {
+                target: target.0,
+                mode: *mode,
+                damage: attack.damage,
+            });
+            animator.play(*kind, CharacterAnimation::Attack);
             reset_attack_cooldown(*kind, &mut attack, &c, &mut random);
         }
     }
@@ -776,7 +785,6 @@ fn controlled_attack(
     time: Res<Time>,
     c: Res<GameConfig>,
     mut random: ResMut<CombatRandom>,
-    mut messages: MessageWriter<DamageMessage>,
     mut units: Query<
         (
             Entity,
@@ -785,8 +793,9 @@ fn controlled_attack(
             &AttackMode,
             &UnitKind,
             &mut Attack,
+            &mut CharacterAnimator,
         ),
-        With<Controlled>,
+        (With<Controlled>, Without<Dying>, Without<PendingAttack>),
     >,
     targets: Query<
         (
@@ -796,15 +805,19 @@ fn controlled_attack(
             Option<&MotionEstimate>,
             Has<Statue>,
         ),
-        (Or<(With<Unit>, With<Statue>)>, Without<Projectile>),
+        (
+            Or<(With<Unit>, With<Statue>)>,
+            Without<Projectile>,
+            Without<Dying>,
+        ),
     >,
 ) {
-    for (owner, team, transform, mode, kind, mut attack) in &mut units {
+    for (owner, team, transform, mode, kind, mut attack, mut animator) in &mut units {
         attack.cooldown.tick(time.delta());
         if !keys.just_pressed(KeyCode::Space) || !attack.cooldown.is_finished() {
             continue;
         }
-        if let Some((entity, _, target_transform, target_motion, target_is_statue)) = targets
+        if let Some((entity, _, _target_transform, _target_motion, _target_is_statue)) = targets
             .iter()
             .filter(|(_, t, p, _, _)| {
                 *t != team && (p.translation.x - transform.translation.x).abs() <= attack.range
@@ -815,21 +828,12 @@ fn controlled_attack(
                     .total_cmp(&(b.2.translation.x - transform.translation.x).abs())
             })
         {
-            perform_attack(
-                &mut commands,
-                &mut messages,
-                &c,
-                &mut random,
-                owner,
-                *team,
-                transform,
-                entity,
-                target_transform,
-                target_motion.map_or(Vec2::ZERO, |motion| motion.velocity),
-                target_is_statue,
-                *mode,
-                attack.damage,
-            );
+            commands.entity(owner).insert(PendingAttack {
+                target: entity,
+                mode: *mode,
+                damage: attack.damage,
+            });
+            animator.play(*kind, CharacterAnimation::Attack);
             reset_attack_cooldown(*kind, &mut attack, &c, &mut random);
         }
     }
@@ -860,69 +864,90 @@ fn reset_attack_cooldown(
     attack.cooldown.reset();
 }
 
-fn perform_attack(
-    commands: &mut Commands,
-    messages: &mut MessageWriter<DamageMessage>,
-    c: &GameConfig,
-    random: &mut CombatRandom,
-    owner: Entity,
-    team: Team,
-    transform: &Transform,
-    target: Entity,
-    target_transform: &Transform,
-    target_velocity: Vec2,
-    target_is_statue: bool,
-    mode: AttackMode,
-    damage: f32,
+fn resolve_attack_animation_events(
+    mut commands: Commands,
+    mut animation_events: MessageReader<CharacterAnimationEvent>,
+    mut messages: MessageWriter<DamageMessage>,
+    c: Res<GameConfig>,
+    mut random: ResMut<CombatRandom>,
+    attackers: Query<(&Team, &Transform, &Attack, &PendingAttack), Without<Dying>>,
+    targets: Query<
+        (&Transform, Option<&MotionEstimate>, Has<Statue>),
+        (Or<(With<Unit>, With<Statue>)>, Without<Dying>),
+    >,
 ) {
-    match mode {
-        AttackMode::Melee => {
-            messages.write(DamageMessage {
-                target,
-                amount: damage,
-            });
+    for event in animation_events.read() {
+        if !matches!(
+            event.kind,
+            CharacterAnimationEventKind::MeleeContact
+                | CharacterAnimationEventKind::ProjectileRelease
+        ) {
+            continue;
         }
-        AttackMode::Projectile => {
-            let direction = (target_transform.translation.x - transform.translation.x).signum();
-            let origin = Vec2::new(
-                transform.translation.x + direction * c.units.archer.arrow.spawn_forward,
-                transform.translation.y + c.units.archer.arrow.spawn_height,
-            );
-            let aim_height = if target_is_statue {
-                c.units.archer.arrow.statue_target_height
-            } else {
-                c.units.archer.arrow.unit_target_height
-            };
-            let target_position = target_transform.translation.xy() + Vec2::Y * aim_height;
-            let variation = Vec2::new(
-                next_combat_variation(&mut random.0),
-                next_combat_variation(&mut random.0),
-            );
-            let velocity = ballistic_launch_velocity(
-                origin,
-                target_position,
-                target_velocity,
-                c.units.archer.arrow.horizontal_speed,
-                c.units.archer.arrow.gravity,
-                c.units.archer.arrow.lifetime_seconds,
-                variation,
-                c.units.archer.arrow.speed_variation,
-                c.units.archer.arrow.vertical_variation,
-            );
-            commands.spawn((
-                BattleEntity,
-                Projectile {
-                    owner,
-                    team,
-                    damage,
-                    velocity,
-                    lifetime_remaining: c.units.archer.arrow.lifetime_seconds,
-                },
-                Sprite::from_color(Color::srgb(0.24, 0.13, 0.06), Vec2::new(34.0, 3.0)),
-                Transform::from_xyz(origin.x, origin.y, 8.0)
-                    .with_rotation(Quat::from_rotation_z(velocity.y.atan2(velocity.x))),
-            ));
+        let Ok((team, transform, attack, pending)) = attackers.get(event.entity) else {
+            continue;
+        };
+        let Ok((target_transform, target_motion, target_is_statue)) = targets.get(pending.target)
+        else {
+            commands.entity(event.entity).remove::<PendingAttack>();
+            continue;
+        };
+
+        match pending.mode {
+            AttackMode::Melee => {
+                // Contact-frame damage can miss if the target escapes during
+                // the wind-up, making the visual strike and gameplay agree.
+                if (target_transform.translation.x - transform.translation.x).abs() <= attack.range
+                {
+                    messages.write(DamageMessage {
+                        target: pending.target,
+                        amount: pending.damage,
+                    });
+                }
+            }
+            AttackMode::Projectile => {
+                let direction = (target_transform.translation.x - transform.translation.x).signum();
+                let origin = Vec2::new(
+                    transform.translation.x + direction * c.units.archer.arrow.spawn_forward,
+                    transform.translation.y + c.units.archer.arrow.spawn_height,
+                );
+                let aim_height = if target_is_statue {
+                    c.units.archer.arrow.statue_target_height
+                } else {
+                    c.units.archer.arrow.unit_target_height
+                };
+                let target_position = target_transform.translation.xy() + Vec2::Y * aim_height;
+                let variation = Vec2::new(
+                    next_combat_variation(&mut random.0),
+                    next_combat_variation(&mut random.0),
+                );
+                let velocity = ballistic_launch_velocity(
+                    origin,
+                    target_position,
+                    target_motion.map_or(Vec2::ZERO, |motion| motion.velocity),
+                    c.units.archer.arrow.horizontal_speed,
+                    c.units.archer.arrow.gravity,
+                    c.units.archer.arrow.lifetime_seconds,
+                    variation,
+                    c.units.archer.arrow.speed_variation,
+                    c.units.archer.arrow.vertical_variation,
+                );
+                commands.spawn((
+                    BattleEntity,
+                    Projectile {
+                        owner: event.entity,
+                        team: *team,
+                        damage: pending.damage,
+                        velocity,
+                        lifetime_remaining: c.units.archer.arrow.lifetime_seconds,
+                    },
+                    Sprite::from_color(Color::srgb(0.24, 0.13, 0.06), Vec2::new(34.0, 3.0)),
+                    Transform::from_xyz(origin.x, origin.y, 8.0)
+                        .with_rotation(Quat::from_rotation_z(velocity.y.atan2(velocity.x))),
+                ));
+            }
         }
+        commands.entity(event.entity).remove::<PendingAttack>();
     }
 }
 
@@ -944,6 +969,7 @@ fn move_projectiles(
         (
             Or<(With<Unit>, With<Statue>, With<GoldDeposit>)>,
             Without<Projectile>,
+            Without<Dying>,
         ),
     >,
 ) {
@@ -1032,11 +1058,22 @@ fn move_projectiles(
 fn apply_damage(
     mut commands: Commands,
     mut messages: MessageReader<DamageMessage>,
-    mut health: Query<(&mut Health, &Transform)>,
+    mut health: Query<(
+        &mut Health,
+        &Transform,
+        Option<&UnitKind>,
+        Option<&mut CharacterAnimator>,
+    )>,
 ) {
     for message in messages.read() {
-        if let Ok((mut h, transform)) = health.get_mut(message.target) {
+        if let Ok((mut h, transform, kind, animator)) = health.get_mut(message.target) {
             h.current = apply_damage_value(h.current, message.amount);
+            if h.current > 0.0
+                && let (Some(kind), Some(mut animator)) = (kind, animator)
+                && !animator.is_locked()
+            {
+                animator.play(*kind, CharacterAnimation::Hit);
+            }
             commands.spawn((
                 BattleEntity,
                 TimedEffect(Timer::from_seconds(0.12, TimerMode::Once)),
@@ -1054,12 +1091,18 @@ fn apply_damage(
 fn process_deaths(
     mut commands: Commands,
     mut economy: ResMut<Economy>,
-    dead: Query<(Entity, &Team, &Health), With<Unit>>,
+    dead: Query<(Entity, &Team, &Health), (With<Unit>, Without<Dying>)>,
 ) {
     for (entity, team, health) in &dead {
         if health.current <= 0.0 {
             *economy.population_mut(*team) = economy.population(*team).saturating_sub(1);
-            commands.entity(entity).despawn();
+            commands
+                .entity(entity)
+                .insert(Dying)
+                .remove::<CurrentTarget>()
+                .remove::<PendingAttack>()
+                .remove::<Controlled>()
+                .remove::<Attack>();
         }
     }
 }
