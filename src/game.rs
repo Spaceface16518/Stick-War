@@ -48,7 +48,7 @@ fn apply_loaded_config(
         && let Some(loaded) = configs.get(&handle.0)
     {
         *config = loaded.clone();
-        info!("Reloaded game config");
+        debug!("Reloaded game config");
     }
 }
 
