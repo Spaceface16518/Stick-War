@@ -1,3 +1,8 @@
+// Bevy ECS systems express their filters and component tuples in function
+// signatures. Keeping those types visible is more useful than hiding them
+// behind aliases solely to satisfy these two generic Clippy thresholds.
+#![allow(clippy::type_complexity, clippy::too_many_arguments)]
+
 mod animation;
 mod battle;
 mod config;

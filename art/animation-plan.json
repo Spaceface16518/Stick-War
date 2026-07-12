@@ -1,0 +1,39 @@
+{
+  "frame_size": 384,
+  "canonical_slot_size": 1024,
+  "characters": {
+    "miner": {
+      "seed": "art/reference/characters/miner-seed.png",
+      "animations": {
+        "idle": { "frames": 8, "fps": 12, "columns": 4 },
+        "walk": { "frames": 10, "fps": 16, "columns": 5 },
+        "walk-loaded": { "frames": 12, "fps": 16, "columns": 4 },
+        "mine": { "frames": 12, "fps": 16, "columns": 4, "event_frame": 7 },
+        "hit": { "frames": 6, "fps": 20, "columns": 3 },
+        "death": { "frames": 12, "fps": 16, "columns": 4 }
+      }
+    },
+    "swordsman": {
+      "seed": "art/reference/characters/swordsman-seed.png",
+      "animations": {
+        "idle": { "frames": 8, "fps": 12, "columns": 4 },
+        "walk": { "frames": 10, "fps": 16, "columns": 5 },
+        "backpedal": { "frames": 10, "fps": 14, "columns": 5 },
+        "attack": { "frames": 12, "fps": 20, "columns": 4, "event_frame": 7 },
+        "hit": { "frames": 6, "fps": 20, "columns": 3 },
+        "death": { "frames": 12, "fps": 16, "columns": 4 }
+      }
+    },
+    "archer": {
+      "seed": "art/reference/characters/archer-seed.png",
+      "animations": {
+        "idle": { "frames": 8, "fps": 12, "columns": 4 },
+        "walk": { "frames": 10, "fps": 16, "columns": 5 },
+        "backpedal": { "frames": 10, "fps": 14, "columns": 5 },
+        "attack": { "frames": 14, "fps": 20, "columns": 5, "event_frame": 9 },
+        "hit": { "frames": 6, "fps": 20, "columns": 3 },
+        "death": { "frames": 12, "fps": 16, "columns": 4 }
+      }
+    }
+  }
+}

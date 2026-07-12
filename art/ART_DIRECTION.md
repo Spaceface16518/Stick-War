@@ -12,17 +12,31 @@
 - Backgrounds use broad gradient fields, blocky parallax silhouettes, and hand-drawn edges.
 - Time-of-day grading controls tint, saturation, and brightness independently of source art.
 
-## Seed approval checkpoint
+## Approved production sources
 
-Before animation strips are generated, approve these four references:
+The approved master references are:
 
 1. Miner master character
 2. Swordsman master character
 3. Archer master character
 4. Battlefield environment and medieval UI mood
 
-Selected references are stored in `art/reference/`. Production-ready sheets will live
-under `assets/characters/`, with previews under `docs/animation-previews/`.
+Selected references are stored in `art/reference/`. Production sheets live under
+`assets/characters/`, static game assets under `assets/props/` and
+`assets/environment/`, and exact-frame previews under `docs/animation-previews/`.
+
+## Reproducible asset pipeline
+
+1. `scripts/extract-sprite-grid.py` soft-mattes approved whole-animation grids.
+2. `scripts/build-character-sheets.py` applies one scale per character, anchors every
+   frame bottom-center, creates deterministic red variants, packs strips, and writes GIFs.
+3. `scripts/build-static-assets.py` removes chroma backgrounds from approved prop sources,
+   normalizes them, and derives the red monument from the blue master.
+4. `scripts/validate-art-assets.py` checks atlas dimensions, transparency, frame counts,
+   and GIF timing against `art/animation-plan.json`.
+
+The raw generated animation grids and normalized intermediates stay in ignored
+`art/work/`; only approved source references and runtime-ready output are committed.
 
 ## Animation plan
 

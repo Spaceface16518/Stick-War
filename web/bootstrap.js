@@ -7,6 +7,11 @@ const updateStatus = (message) => {
   statusMessage.textContent = message;
 };
 
+window.stickWarReady = () => {
+  status.hidden = true;
+  canvas.focus();
+};
+
 const downloadWasm = async (url) => {
   const response = await fetch(url);
 
@@ -59,6 +64,30 @@ const downloadWasm = async (url) => {
   return wasmBytes;
 };
 
+const preloadArtwork = async () => {
+  const response = await fetch("./assets/manifest.json");
+  if (!response.ok) throw new Error(`Asset manifest failed with status ${response.status}`);
+  const assets = await response.json();
+  let completed = 0;
+  const queue = [...assets];
+  const worker = async () => {
+    while (queue.length > 0) {
+      const path = queue.shift();
+      const assetResponse = await fetch(`./assets/${path}`);
+      if (!assetResponse.ok) {
+        throw new Error(`Artwork download failed for ${path} with status ${assetResponse.status}`);
+      }
+      await assetResponse.blob();
+      completed += 1;
+      loadingProgress.max = assets.length;
+      loadingProgress.value = completed;
+      updateStatus(`Preparing artwork… ${Math.round((completed / assets.length) * 100)}%`);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(6, assets.length) }, worker));
+  await document.fonts.load('700 1rem "Cinzel"');
+};
+
 try {
   updateStatus("Preparing game download…");
   const { default: init } = await import("./pkg/stick_war.js");
@@ -66,11 +95,13 @@ try {
   updateStatus("Loading game files…");
   const wasmBytes = await downloadWasm(new URL("./pkg/stick_war_bg.wasm", import.meta.url));
 
+  updateStatus("Preparing artwork…");
+  await preloadArtwork();
+
   updateStatus("Starting Stick War…");
   loadingProgress.removeAttribute("value");
   await init(wasmBytes);
-  status.hidden = true;
-  canvas.focus();
+  updateStatus("Finishing battlefield artwork…");
 } catch (error) {
   console.error("Failed to start Stick War", error);
   status.querySelector(".loading-spinner").hidden = true;

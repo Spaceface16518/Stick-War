@@ -23,6 +23,20 @@ The game is inspired by the simple silhouettes, tug-of-war battlefield, and mix 
 
 The HUD buttons provide mouse controls for training and army orders.
 
+## Production art pipeline
+
+Characters use high-resolution, hand-inked 384 x 384 animation cells packed into
+per-action sprite strips. Swords connect and arrows release on authored animation
+event frames, while miners have distinct empty-handed, loaded, and weighty mining
+cycles. Blue and red units share identical motion because the enemy art is derived
+deterministically from the approved blue master frames.
+
+The battlefield, monuments, deposits, and medieval UI are pre-baked assets with
+Bevy-driven time-of-day tint, brightness, and camera-level saturation grading.
+Adjust the initial hour and grading multipliers in `config/game_config.ron`.
+Exact-frame GIF previews are collected in
+[`docs/animation-previews`](docs/animation-previews/README.md).
+
 ## Local setup
 
 ### Prerequisites
@@ -83,6 +97,9 @@ Open the local URL printed by `serve`. The build script creates `dist/`, compile
 - `config/game_config.ron` — balance and behavior configuration
 - `web/` — HTML and JavaScript browser shell
 - `scripts/build-web.mjs` — WebAssembly build pipeline
+- `art/animation-plan.json` — authored clip lengths, frame rates, and event frames
+- `assets/` — runtime atlases, environment art, props, and licensed UI font
+- `docs/animation-previews/` — GIFs made from the exact shipped atlas frames
 
 Screen lifecycles are separated with Bevy states. Menu and results entities and
 systems exist only in their respective states and use Bevy's reactive desktop

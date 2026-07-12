@@ -55,6 +55,8 @@ pub struct Statue;
 pub struct GoldDeposit;
 #[derive(Component)]
 pub struct BattleCamera;
+#[derive(Component, Debug, Clone, Copy)]
+pub struct ParallaxLayer(pub f32);
 #[derive(Component)]
 pub struct Health {
     pub current: f32,
@@ -105,25 +107,7 @@ pub struct HealthBarFill {
 #[derive(Component)]
 pub struct SelectionMarker;
 #[derive(Component)]
-pub struct WeaponVisual {
-    pub kind: UnitKind,
-}
-#[derive(Component)]
-pub struct GoldSackVisual;
-#[derive(Component)]
 pub struct TimedEffect(pub Timer);
-#[derive(Component)]
-pub struct Limb {
-    pub kind: LimbKind,
-    pub rest_angle: f32,
-}
-#[derive(Debug, Clone, Copy)]
-pub enum LimbKind {
-    LeftArm,
-    RightArm,
-    LeftLeg,
-    RightLeg,
-}
 
 #[derive(Component, Debug, Clone, Copy, Eq, PartialEq)]
 pub enum MinerState {

@@ -1,5 +1,6 @@
-import { cp, mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
+import { join, relative } from "node:path";
 
 const run = (command, args) =>
   new Promise((resolve, reject) => {
@@ -11,9 +12,24 @@ const run = (command, args) =>
     });
   });
 
+const collectRuntimeAssets = async (directory) => {
+  const files = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...(await collectRuntimeAssets(path)));
+    else if (/\.(png|ttf)$/i.test(entry.name)) files.push(relative("assets", path));
+  }
+  return files.sort();
+};
+
 await rm("dist", { recursive: true, force: true });
 await mkdir("dist", { recursive: true });
 await cp("web", "dist", { recursive: true });
+await cp("assets", "dist/assets", { recursive: true });
+await writeFile(
+  "dist/assets/manifest.json",
+  `${JSON.stringify(await collectRuntimeAssets("assets"), null, 2)}\n`,
+);
 
 await run("cargo", [
   "build",

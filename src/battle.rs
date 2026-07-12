@@ -92,13 +92,11 @@ impl Plugin for BattlePlugin {
             (
                 update_health_bars,
                 update_selection_markers,
-                animate_walking,
-                animate_weapons,
-                update_gold_sacks,
                 tick_timed_effects,
                 apply_time_of_day_to_sprites,
                 apply_time_of_day_to_materials,
-                update_battle_camera,
+                apply_time_of_day_to_camera,
+                (update_battle_camera, update_parallax_layers).chain(),
             )
                 .in_set(BattleSet::Presentation),
         );
@@ -188,6 +186,7 @@ fn update_battle_camera(
 fn setup_battle(
     mut commands: Commands,
     c: Res<GameConfig>,
+    asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
@@ -208,12 +207,11 @@ fn setup_battle(
         next_unit: UnitKind::Miner,
     });
     commands.insert_resource(CombatRandom(c.combat.random_seed));
-    spawn_battlefield(&mut commands, &mut meshes, &mut materials, &c);
+    spawn_battlefield(&mut commands, &asset_server);
     for team in [Team::Player, Team::Enemy] {
         spawn_statue(
             &mut commands,
-            &mut meshes,
-            &mut materials,
+            &asset_server,
             team,
             Vec2::new(statue_x(team, &c), c.battlefield.ground_y),
             c.units.statue.health,
@@ -222,6 +220,7 @@ fn setup_battle(
             &mut commands,
             &mut meshes,
             &mut materials,
+            &asset_server,
             team,
             Vec2::new(mine_x(team, &c), c.battlefield.ground_y),
         );

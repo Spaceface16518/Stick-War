@@ -4659,6 +4659,7 @@ dependencies = [
  "bevy",
  "ron",
  "serde",
+ "wasm-bindgen",
 ]
 
 [[package]]

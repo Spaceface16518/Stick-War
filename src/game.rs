@@ -2,7 +2,8 @@ use crate::{
     animation::CharacterAnimationPlugin, battle::BattlePlugin, model::*, rendering::TimeOfDay,
     ui::UiPlugin,
 };
-use bevy::{prelude::*, winit::WinitSettings};
+use bevy::{camera::Hdr, prelude::*, winit::WinitSettings};
+use bevy::{core_pipeline::tonemapping::Tonemapping, render::view::ColorGrading};
 
 pub struct GamePlugin;
 impl Plugin for GamePlugin {
@@ -66,6 +67,9 @@ fn use_continuous_update_mode(mut settings: ResMut<WinitSettings>) {
 fn setup_camera(mut commands: Commands) {
     commands.spawn((
         Camera2d,
+        Hdr,
+        Tonemapping::Reinhard,
+        ColorGrading::default(),
         BattleCamera,
         Projection::Orthographic(OrthographicProjection {
             scaling_mode: bevy::camera::ScalingMode::FixedVertical {

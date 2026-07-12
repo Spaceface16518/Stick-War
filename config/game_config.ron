@@ -84,8 +84,8 @@
     ),
     collision: (
         character: (half_width: 22.0, bottom: -35.0, top: 95.0),
-        statue: (half_width: 65.0, bottom: -10.0, top: 220.0),
-        deposit: (half_width: 52.0, bottom: -5.0, top: 78.0),
+        statue: (half_width: 90.0, bottom: -10.0, top: 305.0),
+        deposit: (half_width: 120.0, bottom: -5.0, top: 120.0),
     ),
     camera: (
         view_height: 720.0,
