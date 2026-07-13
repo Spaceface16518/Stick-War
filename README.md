@@ -118,3 +118,7 @@ assets, playback mode, hot-reload count, and cursor world coordinates.
 Press <kbd>V</kbd> to switch between the clean drawn-character preview and the
 colored rig view. The character RON `visuals` block controls rounded limb width,
 head/hand/foot ellipse sizes, and rig overlay dimensions.
+Joint `length` is optional. Without it, the rendered bone connects directly to
+the first child joint; leaf joints become attachment points. Use an explicit
+length only for intentional offsets such as placing the head ellipse above its
+joint.

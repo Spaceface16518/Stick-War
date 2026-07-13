@@ -108,7 +108,8 @@ struct JointDefinition {
     parent: Option<String>,
     position: (f32, f32),
     angle_degrees: f32,
-    length: f32,
+    #[serde(default)]
+    length: Option<f32>,
     thickness: f32,
     color: JointColor,
 }
@@ -578,17 +579,42 @@ fn draw_editor(
         let local_offset = offset_a.lerp(offset_b, blend) * character.scale;
         let local_angle = angle_a.to_radians()
             + shortest_angle(angle_a.to_radians(), angle_b.to_radians()) * blend;
-        let (parent_end, parent_angle) = joint
+        let (parent_position, parent_angle) = joint
             .parent
             .as_ref()
             .and_then(|name| poses.get(name))
             .map_or((Vec2::new(0.0, -45.0), 0.0), |pose: &JointPose| {
-                (pose.end, pose.angle)
+                (pose.start, pose.angle)
             });
-        let start = parent_end + rotate(local_offset, parent_angle);
+        let start = parent_position + rotate(local_offset, parent_angle);
         let angle = parent_angle + local_angle;
-        let end = start + rotate(Vec2::Y * joint.length * character.scale, angle);
-        poses.insert(joint.name.clone(), JointPose { start, angle, end });
+        poses.insert(
+            joint.name.clone(),
+            JointPose {
+                start,
+                angle,
+                end: start,
+            },
+        );
+    }
+
+    for joint in &character.joints {
+        let Some(pose) = poses.get(&joint.name).copied() else {
+            continue;
+        };
+        let end = if let Some(length) = joint.length {
+            pose.start + rotate(Vec2::Y * length * character.scale, pose.angle)
+        } else {
+            character
+                .joints
+                .iter()
+                .find(|candidate| candidate.parent.as_deref() == Some(joint.name.as_str()))
+                .and_then(|child| poses.get(&child.name))
+                .map_or(pose.start, |child_pose| child_pose.start)
+        };
+        if let Some(pose) = poses.get_mut(&joint.name) {
+            pose.end = end;
+        }
     }
 
     for joint in &character.joints {
@@ -1220,6 +1246,15 @@ mod tests {
                             );
                         }
                     }
+                    assert_eq!(
+                        character
+                            .joints
+                            .iter()
+                            .filter(|joint| joint.length.is_some())
+                            .map(|joint| joint.name.as_str())
+                            .collect::<Vec<_>>(),
+                        vec!["head"]
+                    );
                 }
                 AssetKind::Weapon => {
                     let weapon = asset.weapon.expect("weapon payload");
