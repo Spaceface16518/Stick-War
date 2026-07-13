@@ -1436,6 +1436,22 @@ fn shortest_angle(from: f32, to: f32) -> f32 {
     (to - from + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI
 }
 
+fn edited_joint_position(editor: &Editor, assets: &Assets<StudioAsset>) -> Option<(f32, f32)> {
+    let edit = editor.joint_edit.as_ref()?;
+    assets
+        .get(&edit.handle)?
+        .character
+        .as_ref()?
+        .animations
+        .get(edit.animation_index)?
+        .frames
+        .get(edit.frame_index)?
+        .joints
+        .iter()
+        .find(|key| key.joint == edit.joint_name)?
+        .position
+}
+
 fn update_toolbar(
     editor: Res<Editor>,
     assets: Res<Assets<StudioAsset>>,
@@ -1448,10 +1464,14 @@ fn update_toolbar(
     let animation = character.and_then(|c| c.animations.get(editor.animation_index));
     let weapon = current_weapon(&editor, &assets);
     let weapon_state = weapon.and_then(|w| w.states.get(editor.weapon_state_index));
-    let edit_label = editor
-        .joint_edit
-        .as_ref()
-        .map_or("--", |edit| edit.joint_name.as_str());
+    let edit_label = match (
+        editor.joint_edit.as_ref(),
+        edited_joint_position(&editor, &assets),
+    ) {
+        (Some(edit), Some((x, y))) => format!("{} ({x:.2}, {y:.2})", edit.joint_name),
+        (Some(edit), None) => edit.joint_name.clone(),
+        (None, _) => "--".to_owned(),
+    };
     let frame = animation.map_or(0, |animation| {
         ((editor.elapsed / animation.seconds_per_frame.max(0.001)).floor() as usize)
             .min(animation.frames.len().saturating_sub(1))
