@@ -33,6 +33,7 @@ fn main() {
         .init_asset::<StudioAsset>()
         .init_asset_loader::<StudioAssetLoader>()
         .init_resource::<Editor>()
+        .init_resource::<EvaluatedJointMarkers>()
         .add_systems(Startup, setup)
         .add_systems(
             Update,
@@ -43,6 +44,8 @@ fn main() {
                 update_cursor,
                 advance_animation,
                 draw_editor,
+                update_joint_hover,
+                draw_joint_hover,
                 update_toolbar,
             )
                 .chain(),
@@ -278,7 +281,22 @@ struct PreviewAssets {
 struct EditorViewport<'w, 's> {
     windows: Query<'w, 's, &'static Window>,
     cameras: Query<'w, 's, (&'static Camera, &'static GlobalTransform), With<EditorCamera>>,
+}
+
+#[derive(Clone)]
+struct EvaluatedJointMarker {
+    name: String,
+    position: Vec2,
+    radius: f32,
+}
+
+#[derive(Resource, Default)]
+struct EvaluatedJointMarkers(Vec<EvaluatedJointMarker>);
+
+#[derive(SystemParam)]
+struct EditorRenderState<'w, 's> {
     preview_entities: Query<'w, 's, Entity, With<DrawnPreview>>,
+    joint_markers: ResMut<'w, EvaluatedJointMarkers>,
 }
 
 fn setup(
@@ -517,14 +535,14 @@ struct JointPose {
 fn draw_editor(
     mut commands: Commands,
     mut gizmos: Gizmos,
-    mut editor: ResMut<Editor>,
+    editor: Res<Editor>,
     assets: Res<Assets<StudioAsset>>,
     preview_assets: Res<PreviewAssets>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    viewport: EditorViewport,
+    mut render_state: EditorRenderState,
 ) {
-    editor.hovered_joint = None;
-    for entity in &viewport.preview_entities {
+    render_state.joint_markers.0.clear();
+    for entity in &render_state.preview_entities {
         commands.entity(entity).despawn();
     }
     if editor.show_grid {
@@ -579,47 +597,18 @@ fn draw_editor(
         };
         let color = joint_color(character, joint.color);
         match editor.render_mode {
-            RenderMode::Rig => draw_rig_joint(&mut gizmos, character, pose, color),
+            RenderMode::Rig => {
+                draw_rig_joint(&mut gizmos, character, pose, color);
+                render_state.joint_markers.0.push(EvaluatedJointMarker {
+                    name: joint.name.clone(),
+                    position: pose.start,
+                    radius: character.visuals.rig_joint_radius.max(3.5) * character.scale * 6.0,
+                });
+            }
             RenderMode::Drawn => {
                 spawn_character_joint(&mut commands, &preview_assets, character, joint, pose)
             }
         }
-    }
-
-    if editor.render_mode == RenderMode::Rig {
-        let hovered = viewport
-            .windows
-            .single()
-            .ok()
-            .and_then(|window| window.cursor_position())
-            .and_then(|cursor| {
-                let (camera, camera_transform) = viewport.cameras.single().ok()?;
-                character
-                    .joints
-                    .iter()
-                    .filter_map(|joint| {
-                        let pose = poses.get(&joint.name)?;
-                        let marker = camera
-                            .world_to_viewport(camera_transform, pose.start.extend(0.0))
-                            .ok()?;
-                        marker_hit_distance(cursor, marker, 18.0)
-                            .map(|distance| (joint.name.as_str(), distance))
-                    })
-                    .min_by(|(_, left), (_, right)| left.total_cmp(right))
-                    .map(|(name, _)| name.to_owned())
-            });
-        if let Some(name) = hovered.as_deref()
-            && let Some(pose) = poses.get(name)
-        {
-            draw_filled_ellipse(
-                &mut gizmos,
-                pose.start,
-                Vec2::splat(character.visuals.rig_joint_radius * character.scale * 2.2),
-                0.0,
-                Color::srgb(1.0, 0.88, 0.12),
-            );
-        }
-        editor.hovered_joint = hovered;
     }
 
     if let Some(weapon) = current_weapon(&editor, &assets)
@@ -646,6 +635,38 @@ fn draw_editor(
             ),
         }
     }
+}
+
+fn update_joint_hover(markers: Res<EvaluatedJointMarkers>, mut editor: ResMut<Editor>) {
+    if editor.render_mode != RenderMode::Rig {
+        editor.hovered_joint = None;
+        return;
+    }
+    editor.hovered_joint = markers
+        .0
+        .iter()
+        .filter_map(|marker| {
+            marker_hit_distance(editor.cursor_world, marker.position, marker.radius)
+                .map(|distance| (marker.name.as_str(), distance))
+        })
+        .min_by(|(_, left), (_, right)| left.total_cmp(right))
+        .map(|(name, _)| name.to_owned());
+}
+
+fn draw_joint_hover(mut gizmos: Gizmos, markers: Res<EvaluatedJointMarkers>, editor: Res<Editor>) {
+    let Some(name) = editor.hovered_joint.as_deref() else {
+        return;
+    };
+    let Some(marker) = markers.0.iter().find(|marker| marker.name == name) else {
+        return;
+    };
+    draw_filled_ellipse(
+        &mut gizmos,
+        marker.position,
+        Vec2::splat(marker.radius / 2.7),
+        0.0,
+        Color::srgb(1.0, 0.88, 0.12),
+    );
 }
 
 fn joint_color(character: &CharacterDefinition, color: JointColor) -> Color {
