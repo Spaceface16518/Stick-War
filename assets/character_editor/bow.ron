@@ -1,0 +1,15 @@
+(
+    kind: Weapon,
+    character: None,
+    weapon: Some((
+        name: "Longbow",
+        attach_joint: "hand_r",
+        position: (0.0, 23.0),
+        angle_degrees: 270,
+        state: Bow,
+        length: 62.0,
+        width: 5.0,
+        color: (0.53, 0.30, 0.12, 1.0),
+        states: [(name: "relaxed", draw: 0.0), (name: "half_draw", draw: 0.5), (name: "full_draw", draw: 1.0)],
+    )),
+)

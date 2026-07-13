@@ -98,3 +98,40 @@ animation; leaving it cleans up battle entities and restores reactive updates.
 This policy is centralized in the computed `RuntimeActivity` state: new screens
 default to reactive behavior, while states that run gameplay simulation must be
 explicitly classified as continuous.
+
+## Character animation editor
+
+The repository includes a native example for authoring hot-reloaded, rigged 2D
+characters and modular weapons:
+
+```sh
+cargo run --example character_editor --locked
+```
+
+While it runs, edit the character, animation, and weapon definitions under
+`assets/character_editor/`. Character RON files contain the joint hierarchy,
+appearance, animation timing, and keyframes. Weapon RON files are separate and
+attach to a named hand joint; the sword is static, while the bow demonstrates
+procedural string and arrow states layered onto the animated hand transform.
+The editor toolbar lists its keyboard controls, current frame/time, loaded
+assets, playback mode, hot-reload count, and cursor world coordinates.
+Press <kbd>V</kbd> to switch between the clean drawn-character preview and the
+colored rig view. The character RON `visuals` block controls rounded limb width,
+head/hand/foot ellipse sizes, and rig overlay dimensions.
+Joint `length` is optional. Without it, the rendered bone connects directly to
+the first child joint; leaf joints become attachment points. Use an explicit
+length only for intentional offsets such as placing the head ellipse above its
+joint.
+
+In rig view, hover a joint and press <kbd>E</kbd> to edit its position key for
+the current animation frame. Arrow keys move by 5 units and Shift+arrow moves
+by 0.1 units. Editing initially snaps the cursor to the joint and follows mouse
+movement. The first arrow press restores the edit-start position and switches
+to keyboard-only movement. Press <kbd>E</kbd> again to serialize the character
+back to its RON file, or <kbd>Esc</kbd> to restore the pre-edit asset and exit.
+Playback, frame stepping, restart, and character/animation/weapon-state changes
+also cancel the pending edit before performing their normal action.
+
+The <kbd>A</kbd> cycle includes a non-playing **base model** entry. Edits made in
+that entry update the joint's base `position`; edits made while an animation is
+selected update only its current frame key.

@@ -1,0 +1,44 @@
+(
+    kind: Character,
+    character: Some((
+        name: "Archer",
+        scale: 1.35,
+        skin_color: (0.91, 0.74, 0.55, 1.0),
+        team_color: (0.28, 0.72, 0.36, 1.0),
+        visuals: (
+            limb_width_scale: 0.95,
+            head_size: (24.0, 29.0),
+            hand_size: (10.0, 13.0),
+            foot_size: (18.0, 9.0),
+            rig_line_width: 2.0,
+            rig_joint_radius: 3.5,
+        ),
+        weapon: "character_editor/bow.ron",
+        joints: [
+            (name: "hips", parent: None, position: (0.0, 0.0), angle_degrees: 0.0, thickness: 12.0, color: Team),
+            (name: "chest", parent: Some("hips"), position: (0.0, 22.0), angle_degrees: 0.0, thickness: 14.0, color: Dark),
+            (name: "head", parent: Some("chest"), position: (0.0, 35.0), angle_degrees: 0.0, length: Some(5.0), thickness: 22.0, color: Skin),
+            (name: "upper_arm_l", parent: Some("chest"), position: (-9.0, 27.0), angle_degrees: 205.0, thickness: 7.0, color: Team),
+            (name: "forearm_l", parent: Some("upper_arm_l"), position: (0.0, 27.0), angle_degrees: -18.0, thickness: 7.0, color: Skin),
+            (name: "upper_arm_r", parent: Some("chest"), position: (9.0, 27.0), angle_degrees: -35.0, thickness: 7.0, color: Team),
+            (name: "hand_r", parent: Some("upper_arm_r"), position: (0.0, 27.0), angle_degrees: 8.0, thickness: 7.0, color: Skin),
+            (name: "thigh_l", parent: Some("hips"), position: (-7.0, 0.0), angle_degrees: 188.0, thickness: 9.0, color: Team),
+            (name: "shin_l", parent: Some("thigh_l"), position: (0.0, 31.0), angle_degrees: -8.0, thickness: 8.0, color: Dark),
+            (name: "thigh_r", parent: Some("hips"), position: (7.0, 0.0), angle_degrees: 172.0, thickness: 9.0, color: Team),
+            (name: "shin_r", parent: Some("thigh_r"), position: (0.0, 31.0), angle_degrees: 8.0, thickness: 8.0, color: Dark),
+        ],
+        animations: [
+            (name: "idle", seconds_per_frame: 0.2, frames: [
+                (joints: [(joint: "chest", position: None, angle_degrees: Some(-1.0))]),
+                (joints: [(joint: "chest", position: None, angle_degrees: Some(1.0))]),
+            ]),
+            (name: "draw", seconds_per_frame: 0.14, frames: [
+                (joints: [(joint: "upper_arm_r", position: None, angle_degrees: Some(25.0)), (joint: "hand_r", position: None, angle_degrees: Some(-20.0)), (joint: "upper_arm_l", position: None, angle_degrees: Some(70.0))]),
+                (joints: [(joint: "upper_arm_r", position: None, angle_degrees: Some(60.0)), (joint: "hand_r", position: None, angle_degrees: Some(-45.0)), (joint: "upper_arm_l", position: None, angle_degrees: Some(82.0))]),
+                (joints: [(joint: "upper_arm_r", position: None, angle_degrees: Some(95.0)), (joint: "hand_r", position: None, angle_degrees: Some(-70.0)), (joint: "upper_arm_l", position: None, angle_degrees: Some(88.0))]),
+                (joints: [(joint: "upper_arm_r", position: None, angle_degrees: Some(-35.0)), (joint: "hand_r", position: None, angle_degrees: Some(8.0)), (joint: "upper_arm_l", position: None, angle_degrees: Some(0.0))]),
+            ]),
+        ],
+    )),
+    weapon: None,
+)

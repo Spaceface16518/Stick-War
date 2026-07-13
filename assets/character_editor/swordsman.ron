@@ -1,0 +1,335 @@
+(
+    kind: Character,
+    character: Some((
+        name: "Swordsman",
+        scale: 1.35,
+        skin_color: (0.94, 0.78, 0.59, 1.0),
+        team_color: (0.18, 0.55, 0.95, 1.0),
+        visuals: (
+            limb_width_scale: 1.0,
+            head_size: (25.0, 30.0),
+            hand_size: (11.0, 14.0),
+            foot_size: (19.0, 10.0),
+            rig_line_width: 2.0,
+            rig_joint_radius: 3.5,
+        ),
+        weapon: "character_editor/sword.ron",
+        joints: [
+            (
+                name: "hips",
+                parent: None,
+                position: (-1.1878656, 4.951262),
+                angle_degrees: 0.0,
+                length: None,
+                thickness: 12.0,
+                color: Team,
+            ),
+            (
+                name: "chest",
+                parent: Some("hips"),
+                position: (0.7740847, 53.27379),
+                angle_degrees: 0.0,
+                length: None,
+                thickness: 15.0,
+                color: Dark,
+            ),
+            (
+                name: "head",
+                parent: Some("chest"),
+                position: (0.0494944, 27.669348),
+                angle_degrees: 0.0,
+                length: None,
+                thickness: 22.0,
+                color: Skin,
+            ),
+            (
+                name: "upper_arm_l",
+                parent: Some("chest"),
+                position: (0.0, 0.0),
+                angle_degrees: 170.0,
+                length: None,
+                thickness: 8.0,
+                color: Team,
+            ),
+            (
+                name: "forearm_l",
+                parent: Some("upper_arm_l"),
+                position: (24.932682, 51.779484),
+                angle_degrees: 10.0,
+                length: None,
+                thickness: 7.0,
+                color: Skin,
+            ),
+            (
+                name: "upper_arm_r",
+                parent: Some("chest"),
+                position: (0.0, 0.0),
+                angle_degrees: 205.0,
+                length: None,
+                thickness: 8.0,
+                color: Team,
+            ),
+            (
+                name: "hand_r",
+                parent: Some("upper_arm_r"),
+                position: (-10.586163, 54.789722),
+                angle_degrees: 12.0,
+                length: None,
+                thickness: 7.0,
+                color: Skin,
+            ),
+            (
+                name: "thigh_l",
+                parent: Some("hips"),
+                position: (0.0, 0.0),
+                angle_degrees: 190.0,
+                length: None,
+                thickness: 10.0,
+                color: Team,
+            ),
+            (
+                name: "shin_l",
+                parent: Some("thigh_l"),
+                position: (-10.374697, 70.22233),
+                angle_degrees: -8.0,
+                length: None,
+                thickness: 8.0,
+                color: Dark,
+            ),
+            (
+                name: "thigh_r",
+                parent: Some("hips"),
+                position: (0.0, 0.0),
+                angle_degrees: 170.0,
+                length: None,
+                thickness: 10.0,
+                color: Team,
+            ),
+            (
+                name: "shin_r",
+                parent: Some("thigh_r"),
+                position: (16.11703, 68.89486),
+                angle_degrees: 8.0,
+                length: None,
+                thickness: 8.0,
+                color: Dark,
+            ),
+        ],
+        animations: [
+            (
+                name: "idle",
+                seconds_per_frame: 1.0,
+                frames: [
+                    (
+                        joints: [
+                            (
+                                joint: "chest",
+                                position: None,
+                                angle_degrees: Some(-1.5),
+                            ),
+                            (
+                                joint: "head",
+                                position: Some((2.0111754, 86.16142)),
+                                angle_degrees: None,
+                            ),
+                            (
+                                joint: "forearm_l",
+                                position: Some((7.3232064, 33.1137)),
+                                angle_degrees: None,
+                            ),
+                        ],
+                    ),
+                    (
+                        joints: [
+                            (
+                                joint: "chest",
+                                position: Some((0.0, 35.0)),
+                                angle_degrees: Some(1.5),
+                            ),
+                            (
+                                joint: "head",
+                                position: Some((0.0, -1.0)),
+                                angle_degrees: None,
+                            ),
+                            (
+                                joint: "shin_r",
+                                position: Some((0.5835898, 31.102903)),
+                                angle_degrees: None,
+                            ),
+                            (
+                                joint: "forearm_l",
+                                position: Some((3.661802, 27.555542)),
+                                angle_degrees: None,
+                            ),
+                        ],
+                    ),
+                ],
+            ),
+            (
+                name: "walk",
+                seconds_per_frame: 0.15,
+                frames: [
+                    (
+                        joints: [
+                            (
+                                joint: "thigh_l",
+                                position: None,
+                                angle_degrees: Some(22.0),
+                            ),
+                            (
+                                joint: "thigh_r",
+                                position: None,
+                                angle_degrees: Some(-22.0),
+                            ),
+                            (
+                                joint: "upper_arm_l",
+                                position: None,
+                                angle_degrees: Some(-18.0),
+                            ),
+                            (
+                                joint: "upper_arm_r",
+                                position: None,
+                                angle_degrees: Some(18.0),
+                            ),
+                        ],
+                    ),
+                    (
+                        joints: [
+                            (
+                                joint: "thigh_l",
+                                position: None,
+                                angle_degrees: Some(0.0),
+                            ),
+                            (
+                                joint: "thigh_r",
+                                position: None,
+                                angle_degrees: Some(0.0),
+                            ),
+                        ],
+                    ),
+                    (
+                        joints: [
+                            (
+                                joint: "thigh_l",
+                                position: None,
+                                angle_degrees: Some(-22.0),
+                            ),
+                            (
+                                joint: "thigh_r",
+                                position: None,
+                                angle_degrees: Some(22.0),
+                            ),
+                            (
+                                joint: "upper_arm_l",
+                                position: None,
+                                angle_degrees: Some(18.0),
+                            ),
+                            (
+                                joint: "upper_arm_r",
+                                position: None,
+                                angle_degrees: Some(-18.0),
+                            ),
+                        ],
+                    ),
+                    (
+                        joints: [
+                            (
+                                joint: "thigh_l",
+                                position: None,
+                                angle_degrees: Some(0.0),
+                            ),
+                            (
+                                joint: "thigh_r",
+                                position: None,
+                                angle_degrees: Some(0.0),
+                            ),
+                        ],
+                    ),
+                ],
+            ),
+            (
+                name: "attack",
+                seconds_per_frame: 0.15,
+                frames: [
+                    (
+                        joints: [
+                            (
+                                joint: "upper_arm_r",
+                                position: None,
+                                angle_degrees: Some(1.0),
+                            ),
+                            (
+                                joint: "hand_r",
+                                position: None,
+                                angle_degrees: Some(25.0),
+                            ),
+                            (
+                                joint: "chest",
+                                position: None,
+                                angle_degrees: Some(-8.0),
+                            ),
+                        ],
+                    ),
+                    (
+                        joints: [
+                            (
+                                joint: "upper_arm_r",
+                                position: None,
+                                angle_degrees: Some(100.0),
+                            ),
+                            (
+                                joint: "hand_r",
+                                position: None,
+                                angle_degrees: Some(15.0),
+                            ),
+                            (
+                                joint: "chest",
+                                position: None,
+                                angle_degrees: Some(-12.0),
+                            ),
+                        ],
+                    ),
+                    (
+                        joints: [
+                            (
+                                joint: "upper_arm_r",
+                                position: None,
+                                angle_degrees: Some(-70.0),
+                            ),
+                            (
+                                joint: "hand_r",
+                                position: None,
+                                angle_degrees: Some(-15.0),
+                            ),
+                            (
+                                joint: "chest",
+                                position: None,
+                                angle_degrees: Some(12.0),
+                            ),
+                        ],
+                    ),
+                    (
+                        joints: [
+                            (
+                                joint: "upper_arm_r",
+                                position: None,
+                                angle_degrees: Some(-28.0),
+                            ),
+                            (
+                                joint: "hand_r",
+                                position: None,
+                                angle_degrees: Some(12.0),
+                            ),
+                            (
+                                joint: "chest",
+                                position: None,
+                                angle_degrees: Some(0.0),
+                            ),
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    )),
+    weapon: None,
+)
