@@ -253,11 +253,49 @@ struct EditorCamera;
 #[derive(Component)]
 struct Toolbar;
 
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>, mut editor: ResMut<Editor>) {
+#[derive(Component)]
+struct DrawnPreview;
+
+#[derive(Resource)]
+struct PreviewAssets {
+    circle: Handle<Mesh>,
+    rectangle: Handle<Mesh>,
+    skin: Handle<ColorMaterial>,
+    team: Handle<ColorMaterial>,
+    dark: Handle<ColorMaterial>,
+    weapon: Handle<ColorMaterial>,
+    outline: Handle<ColorMaterial>,
+    gold: Handle<ColorMaterial>,
+    wood: Handle<ColorMaterial>,
+    string: Handle<ColorMaterial>,
+    arrow: Handle<ColorMaterial>,
+}
+
+fn setup(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut editor: ResMut<Editor>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
     editor.characters = CHARACTER_PATHS
         .iter()
         .map(|path| asset_server.load(*path))
         .collect();
+
+    commands.insert_resource(PreviewAssets {
+        circle: meshes.add(Circle::new(0.5)),
+        rectangle: meshes.add(Rectangle::new(1.0, 1.0)),
+        skin: materials.add(Color::WHITE),
+        team: materials.add(Color::WHITE),
+        dark: materials.add(Color::srgb(0.08, 0.09, 0.12)),
+        weapon: materials.add(Color::WHITE),
+        outline: materials.add(Color::srgb(0.06, 0.07, 0.09)),
+        gold: materials.add(Color::srgb(0.78, 0.57, 0.18)),
+        wood: materials.add(Color::srgb(0.35, 0.19, 0.09)),
+        string: materials.add(Color::srgb(0.88, 0.82, 0.68)),
+        arrow: materials.add(Color::srgb(0.62, 0.42, 0.2)),
+    });
 
     commands.spawn((
         Camera2d,
@@ -468,7 +506,18 @@ struct JointPose {
     end: Vec2,
 }
 
-fn draw_editor(mut gizmos: Gizmos, editor: Res<Editor>, assets: Res<Assets<StudioAsset>>) {
+fn draw_editor(
+    mut commands: Commands,
+    mut gizmos: Gizmos,
+    editor: Res<Editor>,
+    assets: Res<Assets<StudioAsset>>,
+    preview_assets: Res<PreviewAssets>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    old_preview: Query<Entity, With<DrawnPreview>>,
+) {
+    for entity in &old_preview {
+        commands.entity(entity).despawn();
+    }
     if editor.show_grid {
         draw_grid(&mut gizmos);
     }
@@ -478,6 +527,12 @@ fn draw_editor(mut gizmos: Gizmos, editor: Res<Editor>, assets: Res<Assets<Studi
     let Some(animation) = character.animations.get(editor.animation_index) else {
         return;
     };
+    if let Some(mut material) = materials.get_mut(&preview_assets.skin) {
+        material.color = character.skin_color.color();
+    }
+    if let Some(mut material) = materials.get_mut(&preview_assets.team) {
+        material.color = character.team_color.color();
+    }
 
     let frame_count = animation.frames.len().max(1);
     let frame_position = editor.elapsed / animation.seconds_per_frame.max(0.001);
@@ -516,20 +571,35 @@ fn draw_editor(mut gizmos: Gizmos, editor: Res<Editor>, assets: Res<Assets<Studi
         let color = joint_color(character, joint.color);
         match editor.render_mode {
             RenderMode::Rig => draw_rig_joint(&mut gizmos, character, pose, color),
-            RenderMode::Drawn => draw_character_joint(&mut gizmos, character, joint, pose, color),
+            RenderMode::Drawn => {
+                spawn_character_joint(&mut commands, &preview_assets, character, joint, pose)
+            }
         }
     }
 
     if let Some(weapon) = current_weapon(&editor, &assets)
         && let Some(hand) = poses.get(&weapon.attach_joint)
     {
-        draw_weapon_sprite(
-            &mut gizmos,
-            weapon,
-            hand,
-            editor.weapon_state_index,
-            character.scale,
-        );
+        if let Some(mut material) = materials.get_mut(&preview_assets.weapon) {
+            material.color = weapon.color.color();
+        }
+        match editor.render_mode {
+            RenderMode::Rig => draw_weapon_rig(
+                &mut gizmos,
+                weapon,
+                hand,
+                editor.weapon_state_index,
+                character.scale,
+            ),
+            RenderMode::Drawn => spawn_weapon_sprite(
+                &mut commands,
+                &preview_assets,
+                weapon,
+                hand,
+                editor.weapon_state_index,
+                character.scale,
+            ),
+        }
     }
 }
 
@@ -563,19 +633,26 @@ fn draw_rig_joint(
     );
 }
 
-fn draw_character_joint(
-    gizmos: &mut Gizmos,
+fn spawn_character_joint(
+    commands: &mut Commands,
+    assets: &PreviewAssets,
     character: &CharacterDefinition,
     joint: &JointDefinition,
     pose: &JointPose,
-    color: Color,
 ) {
-    draw_rounded_line(
-        gizmos,
+    let material = match joint.color {
+        JointColor::Skin => assets.skin.clone(),
+        JointColor::Team => assets.team.clone(),
+        JointColor::Dark => assets.dark.clone(),
+    };
+    spawn_capsule(
+        commands,
+        assets,
         pose.start,
         pose.end,
         joint.thickness * character.visuals.limb_width_scale * character.scale,
-        color,
+        material.clone(),
+        10.0,
     );
 
     let terminal = !character
@@ -592,12 +669,14 @@ fn draw_character_joint(
         None
     };
     if let Some((width, height)) = feature {
-        draw_filled_ellipse(
-            gizmos,
+        spawn_ellipse(
+            commands,
+            assets,
             pose.end,
             Vec2::new(width, height) * character.scale * 0.5,
             pose.angle,
-            color,
+            material,
+            12.0,
         );
     }
 }
@@ -609,7 +688,7 @@ fn keyed_pose(joint: &JointDefinition, frame: Option<&Keyframe>) -> (Vec2, f32) 
     (Vec2::new(offset.0, offset.1), angle)
 }
 
-fn draw_weapon_sprite(
+fn draw_weapon_rig(
     gizmos: &mut Gizmos,
     weapon: &WeaponDefinition,
     hand: &JointPose,
@@ -729,6 +808,203 @@ fn draw_weapon_sprite(
             }
         }
     }
+}
+
+fn spawn_weapon_sprite(
+    commands: &mut Commands,
+    assets: &PreviewAssets,
+    weapon: &WeaponDefinition,
+    hand: &JointPose,
+    state_index: usize,
+    scale: f32,
+) {
+    let position = hand.end
+        + rotate(
+            Vec2::new(weapon.position.0, weapon.position.1) * scale,
+            hand.angle,
+        );
+    let angle = hand.angle + weapon.angle_degrees.to_radians();
+    let axis = rotate(Vec2::Y, angle);
+    let side = Vec2::new(-axis.y, axis.x);
+    let half = weapon.length * scale * 0.5;
+    match weapon.state {
+        WeaponKind::Static => {
+            spawn_capsule(
+                commands,
+                assets,
+                position - axis * half,
+                position + axis * half,
+                (weapon.width + 3.0) * scale,
+                assets.outline.clone(),
+                20.0,
+            );
+            spawn_capsule(
+                commands,
+                assets,
+                position - axis * half,
+                position + axis * half,
+                weapon.width * scale,
+                assets.weapon.clone(),
+                21.0,
+            );
+            spawn_capsule(
+                commands,
+                assets,
+                position - side * 10.0 * scale,
+                position + side * 10.0 * scale,
+                5.0 * scale,
+                assets.gold.clone(),
+                22.0,
+            );
+            spawn_capsule(
+                commands,
+                assets,
+                position - axis * half,
+                position - axis * (half + 14.0 * scale),
+                6.0 * scale,
+                assets.wood.clone(),
+                21.0,
+            );
+            spawn_ellipse(
+                commands,
+                assets,
+                position - axis * (half + 16.0 * scale),
+                Vec2::splat(5.0 * scale),
+                angle,
+                assets.gold.clone(),
+                22.0,
+            );
+        }
+        WeaponKind::Bow => {
+            let top = position + axis * half;
+            let bottom = position - axis * half;
+            let belly = position + side * 12.0 * scale;
+            spawn_capsule(
+                commands,
+                assets,
+                bottom,
+                belly,
+                (weapon.width + 3.0) * scale,
+                assets.outline.clone(),
+                20.0,
+            );
+            spawn_capsule(
+                commands,
+                assets,
+                belly,
+                top,
+                (weapon.width + 3.0) * scale,
+                assets.outline.clone(),
+                20.0,
+            );
+            spawn_capsule(
+                commands,
+                assets,
+                bottom,
+                belly,
+                weapon.width * scale,
+                assets.weapon.clone(),
+                21.0,
+            );
+            spawn_capsule(
+                commands,
+                assets,
+                belly,
+                top,
+                weapon.width * scale,
+                assets.weapon.clone(),
+                21.0,
+            );
+            let draw = weapon
+                .states
+                .get(state_index)
+                .map_or(0.0, |state| state.draw.clamp(0.0, 1.0));
+            let nock = position - side * draw * 27.0 * scale;
+            spawn_capsule(
+                commands,
+                assets,
+                top,
+                nock,
+                1.25 * scale,
+                assets.string.clone(),
+                22.0,
+            );
+            spawn_capsule(
+                commands,
+                assets,
+                nock,
+                bottom,
+                1.25 * scale,
+                assets.string.clone(),
+                22.0,
+            );
+            if draw > 0.05 {
+                let arrow_tip = nock + side * (62.0 + draw * 18.0) * scale;
+                spawn_capsule(
+                    commands,
+                    assets,
+                    nock,
+                    arrow_tip,
+                    2.0 * scale,
+                    assets.arrow.clone(),
+                    23.0,
+                );
+            }
+        }
+    }
+}
+
+fn spawn_capsule(
+    commands: &mut Commands,
+    assets: &PreviewAssets,
+    start: Vec2,
+    end: Vec2,
+    width: f32,
+    material: Handle<ColorMaterial>,
+    z: f32,
+) {
+    let delta = end - start;
+    let length = delta.length();
+    let midpoint = (start + end) * 0.5;
+    let angle = Vec2::Y.angle_to(delta);
+    commands.spawn((
+        DrawnPreview,
+        Mesh2d(assets.rectangle.clone()),
+        MeshMaterial2d(material.clone()),
+        Transform::from_xyz(midpoint.x, midpoint.y, z)
+            .with_rotation(Quat::from_rotation_z(angle))
+            .with_scale(Vec3::new(width, length, 1.0)),
+    ));
+    for point in [start, end] {
+        spawn_ellipse(
+            commands,
+            assets,
+            point,
+            Vec2::splat(width * 0.5),
+            0.0,
+            material.clone(),
+            z + 0.01,
+        );
+    }
+}
+
+fn spawn_ellipse(
+    commands: &mut Commands,
+    assets: &PreviewAssets,
+    center: Vec2,
+    radii: Vec2,
+    angle: f32,
+    material: Handle<ColorMaterial>,
+    z: f32,
+) {
+    commands.spawn((
+        DrawnPreview,
+        Mesh2d(assets.circle.clone()),
+        MeshMaterial2d(material),
+        Transform::from_xyz(center.x, center.y, z)
+            .with_rotation(Quat::from_rotation_z(angle))
+            .with_scale(Vec3::new(radii.x * 2.0, radii.y * 2.0, 1.0)),
+    ));
 }
 
 fn draw_grid(gizmos: &mut Gizmos) {
