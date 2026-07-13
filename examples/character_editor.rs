@@ -581,17 +581,32 @@ fn draw_editor(
     }
 
     if editor.render_mode == RenderMode::Rig {
-        let hover_radius = character.visuals.rig_joint_radius.max(3.5) * character.scale * 3.0;
-        editor.hovered_joint = character
+        let hover_radius = character.visuals.rig_joint_radius.max(3.5) * character.scale * 6.0;
+        let hovered = character
             .joints
             .iter()
             .filter_map(|joint| {
                 let pose = poses.get(&joint.name)?;
-                let distance = pose.start.distance(editor.cursor_world);
+                let marker_distance = pose.start.distance(editor.cursor_world);
+                let bone_distance =
+                    point_segment_distance(editor.cursor_world, pose.start, pose.end);
+                let distance = marker_distance.min(bone_distance);
                 (distance <= hover_radius).then_some((joint.name.as_str(), distance))
             })
             .min_by(|(_, left), (_, right)| left.total_cmp(right))
             .map(|(name, _)| name.to_owned());
+        if let Some(name) = hovered.as_deref()
+            && let Some(pose) = poses.get(name)
+        {
+            draw_filled_ellipse(
+                &mut gizmos,
+                pose.start,
+                Vec2::splat(character.visuals.rig_joint_radius * character.scale * 2.2),
+                0.0,
+                Color::srgb(1.0, 0.88, 0.12),
+            );
+        }
+        editor.hovered_joint = hovered;
     }
 
     if let Some(weapon) = current_weapon(&editor, &assets)
@@ -1082,6 +1097,16 @@ fn rotate(vector: Vec2, angle: f32) -> Vec2 {
     )
 }
 
+fn point_segment_distance(point: Vec2, start: Vec2, end: Vec2) -> f32 {
+    let segment = end - start;
+    let length_squared = segment.length_squared();
+    if length_squared <= f32::EPSILON {
+        return point.distance(start);
+    }
+    let progress = ((point - start).dot(segment) / length_squared).clamp(0.0, 1.0);
+    point.distance(start + segment * progress)
+}
+
 fn shortest_angle(from: f32, to: f32) -> f32 {
     (to - from + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI
 }
@@ -1181,5 +1206,23 @@ mod tests {
         assert_eq!(resume_elapsed(0.4, 1.0, false), 0.4);
         assert_eq!(resume_elapsed(1.0, 1.0, false), 0.0);
         assert_eq!(resume_elapsed(1.0, 1.0, true), 1.0);
+    }
+
+    #[test]
+    fn joint_hit_test_accepts_markers_and_bone_segments() {
+        let start = Vec2::new(10.0, 20.0);
+        let end = Vec2::new(10.0, 60.0);
+        assert_eq!(
+            point_segment_distance(Vec2::new(10.0, 20.0), start, end),
+            0.0
+        );
+        assert_eq!(
+            point_segment_distance(Vec2::new(13.0, 40.0), start, end),
+            3.0
+        );
+        assert_eq!(
+            point_segment_distance(Vec2::new(10.0, 70.0), start, end),
+            10.0
+        );
     }
 }
