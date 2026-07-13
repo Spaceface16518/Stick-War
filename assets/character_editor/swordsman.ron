@@ -18,7 +18,7 @@
             (
                 name: "hips",
                 parent: None,
-                position: (0.0, 0.0),
+                position: (-1.1878656, 4.951262),
                 angle_degrees: 0.0,
                 length: None,
                 thickness: 12.0,
@@ -27,7 +27,7 @@
             (
                 name: "chest",
                 parent: Some("hips"),
-                position: (0.0, 35.0),
+                position: (0.7740847, 53.27379),
                 angle_degrees: 0.0,
                 length: None,
                 thickness: 15.0,
@@ -36,7 +36,7 @@
             (
                 name: "head",
                 parent: Some("chest"),
-                position: (0.0, 10.0),
+                position: (0.0494944, 27.669348),
                 angle_degrees: 0.0,
                 length: None,
                 thickness: 22.0,
@@ -54,7 +54,7 @@
             (
                 name: "forearm_l",
                 parent: Some("upper_arm_l"),
-                position: (0.0, 27.0),
+                position: (24.932682, 51.779484),
                 angle_degrees: 10.0,
                 length: None,
                 thickness: 7.0,
@@ -72,7 +72,7 @@
             (
                 name: "hand_r",
                 parent: Some("upper_arm_r"),
-                position: (0.0, 27.0),
+                position: (-10.586163, 54.789722),
                 angle_degrees: 12.0,
                 length: None,
                 thickness: 7.0,
@@ -90,7 +90,7 @@
             (
                 name: "shin_l",
                 parent: Some("thigh_l"),
-                position: (0.0, 31.0),
+                position: (-10.374697, 70.22233),
                 angle_degrees: -8.0,
                 length: None,
                 thickness: 8.0,
@@ -108,7 +108,7 @@
             (
                 name: "shin_r",
                 parent: Some("thigh_r"),
-                position: (0.0, 31.0),
+                position: (16.11703, 68.89486),
                 angle_degrees: 8.0,
                 length: None,
                 thickness: 8.0,
