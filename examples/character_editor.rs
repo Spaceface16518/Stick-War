@@ -587,11 +587,8 @@ fn draw_editor(
             .iter()
             .filter_map(|joint| {
                 let pose = poses.get(&joint.name)?;
-                let marker_distance = pose.start.distance(editor.cursor_world);
-                let bone_distance =
-                    point_segment_distance(editor.cursor_world, pose.start, pose.end);
-                let distance = marker_distance.min(bone_distance);
-                (distance <= hover_radius).then_some((joint.name.as_str(), distance))
+                marker_hit_distance(editor.cursor_world, pose.start, hover_radius)
+                    .map(|distance| (joint.name.as_str(), distance))
             })
             .min_by(|(_, left), (_, right)| left.total_cmp(right))
             .map(|(name, _)| name.to_owned());
@@ -1097,14 +1094,9 @@ fn rotate(vector: Vec2, angle: f32) -> Vec2 {
     )
 }
 
-fn point_segment_distance(point: Vec2, start: Vec2, end: Vec2) -> f32 {
-    let segment = end - start;
-    let length_squared = segment.length_squared();
-    if length_squared <= f32::EPSILON {
-        return point.distance(start);
-    }
-    let progress = ((point - start).dot(segment) / length_squared).clamp(0.0, 1.0);
-    point.distance(start + segment * progress)
+fn marker_hit_distance(cursor: Vec2, marker: Vec2, radius: f32) -> Option<f32> {
+    let distance = cursor.distance(marker);
+    (distance <= radius).then_some(distance)
 }
 
 fn shortest_angle(from: f32, to: f32) -> f32 {
@@ -1209,20 +1201,16 @@ mod tests {
     }
 
     #[test]
-    fn joint_hit_test_accepts_markers_and_bone_segments() {
-        let start = Vec2::new(10.0, 20.0);
-        let end = Vec2::new(10.0, 60.0);
+    fn joint_hit_test_only_accepts_the_marker_radius() {
+        let marker = Vec2::new(10.0, 20.0);
+        assert_eq!(marker_hit_distance(marker, marker, 8.0), Some(0.0));
         assert_eq!(
-            point_segment_distance(Vec2::new(10.0, 20.0), start, end),
-            0.0
+            marker_hit_distance(Vec2::new(13.0, 24.0), marker, 8.0),
+            Some(5.0)
         );
         assert_eq!(
-            point_segment_distance(Vec2::new(13.0, 40.0), start, end),
-            3.0
-        );
-        assert_eq!(
-            point_segment_distance(Vec2::new(10.0, 70.0), start, end),
-            10.0
+            marker_hit_distance(Vec2::new(10.0, 40.0), marker, 8.0),
+            None
         );
     }
 }
