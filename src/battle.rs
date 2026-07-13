@@ -1,4 +1,4 @@
-use crate::{model::*, rendering::*, units::*};
+use crate::{characters::*, model::*, rendering::*, units::*};
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 
@@ -80,6 +80,7 @@ impl Plugin for BattlePlugin {
         .add_systems(
             Update,
             (
+                (spawn_character_visuals, animate_characters).chain(),
                 update_health_bars,
                 update_selection_markers,
                 animate_walking,

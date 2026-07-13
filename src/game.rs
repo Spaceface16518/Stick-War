@@ -1,4 +1,9 @@
-use crate::{battle::BattlePlugin, model::*, ui::UiPlugin};
+use crate::{
+    battle::BattlePlugin,
+    characters::{StudioAsset, StudioAssetLoader, load_character_assets},
+    model::*,
+    ui::UiPlugin,
+};
 use bevy::{prelude::*, winit::WinitSettings};
 
 pub struct GamePlugin;
@@ -9,6 +14,8 @@ impl Plugin for GamePlugin {
             .add_computed_state::<RuntimeActivity>()
             .init_asset::<GameConfig>()
             .init_asset_loader::<GameConfigLoader>()
+            .init_asset::<StudioAsset>()
+            .init_asset_loader::<StudioAssetLoader>()
             // UI-only states do not need a continuously running game loop. Start
             // reactively so the title screen is low-power from the first frame.
             .insert_resource(WinitSettings::desktop_app())
@@ -16,7 +23,10 @@ impl Plugin for GamePlugin {
             .add_message::<TrainUnitRequest>()
             .add_message::<DamageMessage>()
             .add_plugins((BattlePlugin, UiPlugin))
-            .add_systems(Startup, (setup_camera, load_config_asset))
+            .add_systems(
+                Startup,
+                (setup_camera, load_config_asset, load_character_assets),
+            )
             .add_systems(Update, apply_loaded_config)
             .add_systems(
                 OnEnter(RuntimeActivity::Interface),

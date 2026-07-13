@@ -13,7 +13,7 @@
             rig_line_width: 2.0,
             rig_joint_radius: 3.5,
         ),
-        weapon: "character_editor/sword.ron",
+        weapon: "characters/sword.ron",
         joints: [
             (
                 name: "hips",

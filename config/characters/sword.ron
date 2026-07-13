@@ -5,7 +5,7 @@
         name: "Iron Sword",
         attach_joint: "hand_r",
         position: (-35, 0),
-        angle_degrees: 90,
+        angle_degrees: 90.0,
         state: Static,
         length: 55.0,
         width: 7.0,

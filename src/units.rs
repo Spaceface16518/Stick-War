@@ -241,6 +241,19 @@ fn stick_figure(
     add_health_bar(commands, root, 55.0, 80.0);
 }
 
+fn add_character_indicators(commands: &mut Commands, root: Entity) {
+    commands.entity(root).with_children(|p| {
+        p.spawn((
+            SelectionMarker,
+            Visibility::Hidden,
+            Sprite::from_color(Color::srgb(1.0, 0.9, 0.15), Vec2::new(25.0, 12.0)),
+            Transform::from_xyz(0.0, 125.0, 2.0)
+                .with_rotation(Quat::from_rotation_z(std::f32::consts::PI / 4.0)),
+        ));
+    });
+    add_health_bar(commands, root, 62.0, 118.0);
+}
+
 pub fn spawn_statue(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -449,14 +462,7 @@ pub fn spawn_swordsman(
             Visibility::default(),
         ))
         .id();
-    stick_figure(
-        commands,
-        _meshes,
-        _materials,
-        root,
-        team,
-        UnitKind::Swordsman,
-    );
+    add_character_indicators(commands, root);
     root
 }
 
@@ -497,6 +503,6 @@ pub fn spawn_archer(
             Visibility::default(),
         ))
         .id();
-    stick_figure(commands, _meshes, _materials, root, team, UnitKind::Archer);
+    add_character_indicators(commands, root);
     root
 }

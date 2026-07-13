@@ -1,35 +1,39 @@
 //! Hot-reloaded, RON-driven 2D character animation editor.
 //!
 //! Run with `cargo run --example character_editor --locked`, then edit files in
-//! `assets/character_editor/`. The asset server reloads character keyframes and
+//! `config/characters/`. The asset server reloads character keyframes and
 //! independent weapon definitions without restarting the editor.
 
 use std::collections::HashMap;
 
 use bevy::{
-    asset::{AssetLoader, LoadContext, io::Reader},
+    asset::{AssetLoader, AssetPlugin, LoadContext, io::Reader},
     ecs::system::SystemParam,
     prelude::*,
     reflect::TypePath,
 };
 use serde::{Deserialize, Serialize};
 
-const CHARACTER_PATHS: [&str; 2] = [
-    "character_editor/swordsman.ron",
-    "character_editor/archer.ron",
-];
+const CHARACTER_PATHS: [&str; 2] = ["characters/swordsman.ron", "characters/archer.ron"];
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Stick War Character Editor".into(),
-                resolution: (1280, 760).into(),
-                resizable: true,
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(AssetPlugin {
+                    file_path: "config".into(),
+                    ..default()
+                })
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Stick War Character Editor".into(),
+                        resolution: (1280, 760).into(),
+                        resizable: true,
+                        ..default()
+                    }),
+                    ..default()
+                }),
+        )
         .init_asset::<StudioAsset>()
         .init_asset_loader::<StudioAssetLoader>()
         .init_resource::<Editor>()
@@ -817,7 +821,7 @@ fn save_joint_edit(editor: &mut Editor, assets: &Assets<StudioAsset>) {
         })
         .and_then(|source| {
             std::fs::write(
-                std::path::Path::new("assets").join(&edit.asset_path),
+                std::path::Path::new("config").join(&edit.asset_path),
                 source,
             )
             .map_err(|error| error.to_string())
@@ -1687,10 +1691,10 @@ mod tests {
     #[test]
     fn bundled_character_and_weapon_assets_are_valid() {
         let assets = [
-            parse(include_str!("../assets/character_editor/swordsman.ron")),
-            parse(include_str!("../assets/character_editor/archer.ron")),
-            parse(include_str!("../assets/character_editor/sword.ron")),
-            parse(include_str!("../assets/character_editor/bow.ron")),
+            parse(include_str!("../config/characters/swordsman.ron")),
+            parse(include_str!("../config/characters/archer.ron")),
+            parse(include_str!("../config/characters/sword.ron")),
+            parse(include_str!("../config/characters/bow.ron")),
         ];
 
         for asset in assets {
@@ -1763,7 +1767,7 @@ mod tests {
 
     #[test]
     fn editable_character_assets_round_trip_through_pretty_ron() {
-        let asset = parse(include_str!("../assets/character_editor/archer.ron"));
+        let asset = parse(include_str!("../config/characters/archer.ron"));
         let serialized = ron::ser::to_string_pretty(&asset, ron::ser::PrettyConfig::default())
             .expect("character asset should serialize");
         let reparsed: StudioAsset =
@@ -1785,13 +1789,13 @@ mod tests {
 
     #[test]
     fn base_and_animation_edits_write_to_different_targets() {
-        let asset = parse(include_str!("../assets/character_editor/archer.ron"));
+        let asset = parse(include_str!("../config/characters/archer.ron"));
         let original = asset.clone();
         let mut assets = Assets::<StudioAsset>::default();
         let handle = assets.add(asset);
         let make_edit = |target| JointEdit {
             handle: handle.clone(),
-            asset_path: "character_editor/archer.ron".into(),
+            asset_path: "characters/archer.ron".into(),
             joint_name: "chest".into(),
             target,
             parent_world_angle: 0.0,

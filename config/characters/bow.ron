@@ -5,7 +5,7 @@
         name: "Longbow",
         attach_joint: "hand_r",
         position: (0.0, 23.0),
-        angle_degrees: 270,
+        angle_degrees: 270.0,
         state: Bow,
         length: 62.0,
         width: 5.0,

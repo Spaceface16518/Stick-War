@@ -13,7 +13,7 @@
             rig_line_width: 2.0,
             rig_joint_radius: 3.5,
         ),
-        weapon: "character_editor/bow.ron",
+        weapon: "characters/bow.ron",
         joints: [
             (name: "hips", parent: None, position: (0.0, 0.0), angle_degrees: 0.0, thickness: 12.0, color: Team),
             (name: "chest", parent: Some("hips"), position: (0.0, 22.0), angle_degrees: 0.0, thickness: 14.0, color: Dark),

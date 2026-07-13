@@ -109,7 +109,7 @@ cargo run --example character_editor --locked
 ```
 
 While it runs, edit the character, animation, and weapon definitions under
-`assets/character_editor/`. Character RON files contain the joint hierarchy,
+`config/characters/`. Character RON files contain the joint hierarchy,
 appearance, animation timing, and keyframes. Weapon RON files are separate and
 attach to a named hand joint; the sword is static, while the bow demonstrates
 procedural string and arrow states layered onto the animated hand transform.
@@ -122,6 +122,13 @@ Joint `length` is optional. Without it, the rendered bone connects directly to
 the first child joint; leaf joints become attachment points. Use an explicit
 length only for intentional offsets such as placing the head ellipse above its
 joint.
+
+The battle runtime loads these same RON assets through Bevy's asset server for
+swordsmen and archers. Movement and combat state select the authored clips,
+enemy rigs are mirrored, and the modular weapon remains attached to `hand_r`.
+The bow string, nocked arrow, and draw amount are generated procedurally from
+the archer's live attack timing; editing a character or weapon RON file during
+native development hot-reloads the corresponding battlefield visuals.
 
 In rig view, hover a joint and press <kbd>E</kbd> to edit its position key for
 the current animation frame. Arrow keys move by 5 units and Shift+arrow moves

@@ -1,4 +1,5 @@
 mod battle;
+mod characters;
 mod config;
 mod game;
 mod model;
