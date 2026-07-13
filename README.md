@@ -125,6 +125,9 @@ joint.
 
 In rig view, hover a joint and press <kbd>E</kbd> to edit its position key for
 the current animation frame. Arrow keys move by 5 units and Shift+arrow moves
-by 0.1 units. Press <kbd>E</kbd> again to serialize the character back to its RON
-file. Playback, frame stepping, restart, and character/animation/weapon-state
-changes cancel the pending edit and restore the pre-edit asset.
+by 0.1 units. Editing initially snaps the cursor to the joint and follows mouse
+movement. The first arrow press restores the edit-start position and switches
+to keyboard-only movement. Press <kbd>E</kbd> again to serialize the character
+back to its RON file, or <kbd>Esc</kbd> to restore the pre-edit asset and exit.
+Playback, frame stepping, restart, and character/animation/weapon-state changes
+also cancel the pending edit before performing their normal action.

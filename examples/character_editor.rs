@@ -34,6 +34,7 @@ fn main() {
         .init_asset_loader::<StudioAssetLoader>()
         .init_resource::<Editor>()
         .init_resource::<EvaluatedJointMarkers>()
+        .init_resource::<CursorWarpRequest>()
         .add_systems(Startup, setup)
         .add_systems(
             Update,
@@ -41,7 +42,9 @@ fn main() {
                 receive_hot_reload,
                 sync_weapon,
                 editor_input,
+                apply_cursor_warp,
                 update_cursor,
+                drag_edited_joint,
                 advance_animation,
                 draw_editor,
                 update_joint_hover,
@@ -249,6 +252,9 @@ struct JointEdit {
     frame_index: usize,
     parent_world_angle: f32,
     character_scale: f32,
+    start_position: (f32, f32),
+    anchor_world: Vec2,
+    mouse_dragging: bool,
     original: StudioAsset,
 }
 
@@ -308,6 +314,9 @@ struct EvaluatedJointMarker {
 
 #[derive(Resource, Default)]
 struct EvaluatedJointMarkers(Vec<EvaluatedJointMarker>);
+
+#[derive(Resource, Default)]
+struct CursorWarpRequest(Option<Vec2>);
 
 #[derive(SystemParam)]
 struct EditorRenderState<'w, 's> {
@@ -436,7 +445,12 @@ fn editor_input(
     mut editor: ResMut<Editor>,
     mut assets: ResMut<Assets<StudioAsset>>,
     markers: Res<EvaluatedJointMarkers>,
+    mut cursor_warp: ResMut<CursorWarpRequest>,
 ) {
+    if editor.joint_edit.is_some() && keys.just_pressed(KeyCode::Escape) {
+        cancel_joint_edit(&mut editor, &mut assets);
+        return;
+    }
     let cancels_edit = [
         KeyCode::Space,
         KeyCode::KeyF,
@@ -456,7 +470,7 @@ fn editor_input(
         if editor.joint_edit.is_some() {
             save_joint_edit(&mut editor, &assets);
         } else {
-            begin_joint_edit(&mut editor, &mut assets, &markers);
+            begin_joint_edit(&mut editor, &mut assets, &markers, &mut cursor_warp);
         }
         return;
     }
@@ -481,6 +495,7 @@ fn editor_input(
             delta.y -= step;
         }
         if delta != Vec2::ZERO {
+            switch_to_keyboard_edit(&mut editor, &mut assets);
             move_edited_joint(&editor, &mut assets, delta);
             return;
         }
@@ -564,6 +579,7 @@ fn begin_joint_edit(
     editor: &mut Editor,
     assets: &mut Assets<StudioAsset>,
     markers: &EvaluatedJointMarkers,
+    cursor_warp: &mut CursorWarpRequest,
 ) {
     if editor.render_mode != RenderMode::Rig {
         editor.status = "Switch to rig view before editing".into();
@@ -622,6 +638,12 @@ fn begin_joint_edit(
             angle_degrees: None,
         });
     }
+    let start_position = frame
+        .joints
+        .iter()
+        .find(|key| key.joint == joint_name)
+        .and_then(|key| key.position)
+        .unwrap_or(base_position);
     editor.playing = false;
     editor.status = format!("Editing {joint_name}; press E to save");
     editor.joint_edit = Some(JointEdit {
@@ -632,8 +654,12 @@ fn begin_joint_edit(
         frame_index,
         parent_world_angle,
         character_scale,
+        start_position,
+        anchor_world: marker.position,
+        mouse_dragging: true,
         original,
     });
+    cursor_warp.0 = Some(marker.position);
 }
 
 fn move_edited_joint(editor: &Editor, assets: &mut Assets<StudioAsset>, delta: Vec2) {
@@ -663,6 +689,43 @@ fn move_edited_joint(editor: &Editor, assets: &mut Assets<StudioAsset>, delta: V
     let position = key.position.get_or_insert((0.0, 0.0));
     position.0 += local_delta.x;
     position.1 += local_delta.y;
+}
+
+fn switch_to_keyboard_edit(editor: &mut Editor, assets: &mut Assets<StudioAsset>) {
+    let Some(edit) = editor.joint_edit.as_mut() else {
+        return;
+    };
+    if !edit.mouse_dragging {
+        return;
+    }
+    set_edited_joint_position(assets, edit, edit.start_position);
+    edit.mouse_dragging = false;
+    editor.status = format!("Editing {} with arrow keys", edit.joint_name);
+}
+
+fn set_edited_joint_position(
+    assets: &mut Assets<StudioAsset>,
+    edit: &JointEdit,
+    position: (f32, f32),
+) {
+    let Some(mut asset) = assets.get_mut(&edit.handle) else {
+        return;
+    };
+    let Some(key) = asset
+        .character
+        .as_mut()
+        .and_then(|character| character.animations.get_mut(edit.animation_index))
+        .and_then(|animation| animation.frames.get_mut(edit.frame_index))
+        .and_then(|frame| {
+            frame
+                .joints
+                .iter_mut()
+                .find(|key| key.joint == edit.joint_name)
+        })
+    else {
+        return;
+    };
+    key.position = Some(position);
 }
 
 fn world_edit_delta(delta: Vec2, parent_world_angle: f32, character_scale: f32) -> Vec2 {
@@ -720,6 +783,50 @@ fn update_cursor(viewport: EditorViewport, mut editor: ResMut<Editor>) {
     if let Ok(world) = camera.viewport_to_world_2d(camera_transform, cursor) {
         editor.cursor_world = world;
     }
+}
+
+fn apply_cursor_warp(
+    mut request: ResMut<CursorWarpRequest>,
+    mut windows: Query<&mut Window>,
+    cameras: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
+) {
+    let Some(world_position) = request.0.take() else {
+        return;
+    };
+    let Ok(mut window) = windows.single_mut() else {
+        return;
+    };
+    let Ok((camera, camera_transform)) = cameras.single() else {
+        return;
+    };
+    if let Ok(viewport_position) =
+        camera.world_to_viewport(camera_transform, world_position.extend(0.0))
+    {
+        window.set_cursor_position(Some(viewport_position));
+    }
+}
+
+fn drag_edited_joint(editor: Res<Editor>, mut assets: ResMut<Assets<StudioAsset>>) {
+    let Some(edit) = editor
+        .joint_edit
+        .as_ref()
+        .filter(|edit| edit.mouse_dragging)
+    else {
+        return;
+    };
+    let local_delta = world_edit_delta(
+        editor.cursor_world - edit.anchor_world,
+        edit.parent_world_angle,
+        edit.character_scale,
+    );
+    set_edited_joint_position(
+        &mut assets,
+        edit,
+        (
+            edit.start_position.0 + local_delta.x,
+            edit.start_position.1 + local_delta.y,
+        ),
+    );
 }
 
 fn advance_animation(
@@ -1468,7 +1575,11 @@ fn update_toolbar(
         editor.joint_edit.as_ref(),
         edited_joint_position(&editor, &assets),
     ) {
-        (Some(edit), Some((x, y))) => format!("{} ({x:.2}, {y:.2})", edit.joint_name),
+        (Some(edit), Some((x, y))) => format!(
+            "{} ({x:.2}, {y:.2}) {}",
+            edit.joint_name,
+            if edit.mouse_dragging { "mouse" } else { "keys" }
+        ),
         (Some(edit), None) => edit.joint_name.clone(),
         (None, _) => "--".to_owned(),
     };
@@ -1480,7 +1591,7 @@ fn update_toolbar(
     **text = format!(
         "CHARACTER  {}   |   ANIMATION  {}   |   FRAME  {}/{}   |   TIME  {:.2}s   |   {:.3}s/frame\n\
          VIEW  {}   |   JOINT  {}   |   EDITING  {}   |   WEAPON  {}   |   STATE  {}   |   PLAYBACK  {} / {}   |   GRID  {}   |   CURSOR  ({:.1}, {:.1})\n\
-         [E] edit/save   [Arrows] move 5   [Shift+Arrows] move 0.1   [V] drawn/rig   [C] character   [A] animation   [W] weapon state   [Space] play/pause   [F] next frame   [L] loop/once   [R] restart   [G] grid   |   {} (reload #{})",
+         [E] edit/save   [Mouse] move joint   [Arrows] reset + move 5   [Shift+Arrows] reset + move 0.1   [Esc] cancel   [V] drawn/rig   [C] character   [A] animation   [W] weapon state   [Space] play/pause   [F] next frame   [L] loop/once   [R] restart   [G] grid   |   {} (reload #{})",
         character.map_or("--", |c| c.name.as_str()),
         animation.map_or("--", |a| a.name.as_str()),
         frame + 1,
