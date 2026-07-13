@@ -313,7 +313,17 @@ fn editor_input(
     assets: Res<Assets<StudioAsset>>,
 ) {
     if keys.just_pressed(KeyCode::Space) {
-        editor.playing = !editor.playing;
+        if editor.playing {
+            editor.playing = false;
+        } else {
+            let duration = current_character(&editor, &assets)
+                .and_then(|character| character.animations.get(editor.animation_index))
+                .map(animation_duration);
+            if let Some(duration) = duration {
+                editor.elapsed = resume_elapsed(editor.elapsed, duration, editor.looping);
+            }
+            editor.playing = true;
+        }
     }
     if keys.just_pressed(KeyCode::KeyL) {
         editor.looping = !editor.looping;
@@ -337,13 +347,8 @@ fn editor_input(
 
     let animation_count =
         current_character(&editor, &assets).map_or(0, |character| character.animations.len());
-    if animation_count > 0 && keys.just_pressed(KeyCode::ArrowRight) {
+    if animation_count > 0 && keys.just_pressed(KeyCode::KeyA) {
         editor.animation_index = (editor.animation_index + 1) % animation_count;
-        editor.elapsed = 0.0;
-        editor.playing = true;
-    }
-    if animation_count > 0 && keys.just_pressed(KeyCode::ArrowLeft) {
-        editor.animation_index = (editor.animation_index + animation_count - 1) % animation_count;
         editor.elapsed = 0.0;
         editor.playing = true;
     }
@@ -384,7 +389,7 @@ fn advance_animation(
     else {
         return;
     };
-    let duration = animation.seconds_per_frame.max(0.001) * animation.frames.len().max(1) as f32;
+    let duration = animation_duration(animation);
     editor.elapsed += time.delta_secs();
     if editor.elapsed >= duration {
         if editor.looping {
@@ -393,6 +398,18 @@ fn advance_animation(
             editor.elapsed = duration;
             editor.playing = false;
         }
+    }
+}
+
+fn animation_duration(animation: &AnimationDefinition) -> f32 {
+    animation.seconds_per_frame.max(0.001) * animation.frames.len().max(1) as f32
+}
+
+fn resume_elapsed(elapsed: f32, duration: f32, looping: bool) -> f32 {
+    if !looping && elapsed >= duration {
+        0.0
+    } else {
+        elapsed
     }
 }
 
@@ -631,7 +648,7 @@ fn update_toolbar(
     **text = format!(
         "CHARACTER  {}   |   ANIMATION  {}   |   FRAME  {}/{}   |   TIME  {:.2}s   |   {:.3}s/frame\n\
          WEAPON  {}   |   STATE  {}   |   PLAYBACK  {} / {}   |   GRID  {}   |   CURSOR  ({:.1}, {:.1})\n\
-         [C] character   [←/→] animation   [W] weapon state   [Space] play/pause   [L] loop/once   [R] restart   [G] grid   |   {} (reload #{})",
+         [C] character   [A] animation   [W] weapon state   [Space] play/pause   [L] loop/once   [R] restart   [G] grid   |   {} (reload #{})",
         character.map_or("--", |c| c.name.as_str()),
         animation.map_or("--", |a| a.name.as_str()),
         frame + 1,
@@ -697,5 +714,12 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn once_playback_rewinds_only_after_reaching_the_end() {
+        assert_eq!(resume_elapsed(0.4, 1.0, false), 0.4);
+        assert_eq!(resume_elapsed(1.0, 1.0, false), 0.0);
+        assert_eq!(resume_elapsed(1.0, 1.0, true), 1.0);
     }
 }
