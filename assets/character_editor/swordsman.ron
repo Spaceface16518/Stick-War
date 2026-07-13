@@ -28,7 +28,7 @@
             (name: "shin_r", parent: Some("thigh_r"), position: (0.0, 31.0), angle_degrees: 8.0, length: 31.0, thickness: 8.0, color: Dark),
         ],
         animations: [
-            (name: "idle", seconds_per_frame: 0.18, frames: [
+            (name: "idle", seconds_per_frame: 1, frames: [
                 (joints: [(joint: "chest", position: None, angle_degrees: Some(-1.5)), (joint: "head", position: Some((0.0, 1.0)), angle_degrees: None)]),
                 (joints: [(joint: "chest", position: None, angle_degrees: Some(1.5)), (joint: "head", position: Some((0.0, -1.0)), angle_degrees: None)]),
             ]),
