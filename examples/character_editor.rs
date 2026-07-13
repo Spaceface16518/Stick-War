@@ -247,6 +247,8 @@ struct JointEdit {
     joint_name: String,
     animation_index: usize,
     frame_index: usize,
+    parent_world_angle: f32,
+    character_scale: f32,
     original: StudioAsset,
 }
 
@@ -300,6 +302,8 @@ struct EvaluatedJointMarker {
     name: String,
     position: Vec2,
     radius: f32,
+    parent_world_angle: f32,
+    character_scale: f32,
 }
 
 #[derive(Resource, Default)]
@@ -431,6 +435,7 @@ fn editor_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut editor: ResMut<Editor>,
     mut assets: ResMut<Assets<StudioAsset>>,
+    markers: Res<EvaluatedJointMarkers>,
 ) {
     let cancels_edit = [
         KeyCode::Space,
@@ -451,7 +456,7 @@ fn editor_input(
         if editor.joint_edit.is_some() {
             save_joint_edit(&mut editor, &assets);
         } else {
-            begin_joint_edit(&mut editor, &mut assets);
+            begin_joint_edit(&mut editor, &mut assets, &markers);
         }
         return;
     }
@@ -555,7 +560,11 @@ fn current_frame_index(editor: &Editor, animation: &AnimationDefinition) -> usiz
         .min(animation.frames.len().saturating_sub(1))
 }
 
-fn begin_joint_edit(editor: &mut Editor, assets: &mut Assets<StudioAsset>) {
+fn begin_joint_edit(
+    editor: &mut Editor,
+    assets: &mut Assets<StudioAsset>,
+    markers: &EvaluatedJointMarkers,
+) {
     if editor.render_mode != RenderMode::Rig {
         editor.status = "Switch to rig view before editing".into();
         return;
@@ -564,6 +573,12 @@ fn begin_joint_edit(editor: &mut Editor, assets: &mut Assets<StudioAsset>) {
         editor.status = "Hover a joint marker before pressing E".into();
         return;
     };
+    let Some(marker) = markers.0.iter().find(|marker| marker.name == joint_name) else {
+        editor.status = "Hovered joint pose is unavailable".into();
+        return;
+    };
+    let parent_world_angle = marker.parent_world_angle;
+    let character_scale = marker.character_scale;
     let Some(handle) = editor.characters.get(editor.character_index).cloned() else {
         return;
     };
@@ -615,6 +630,8 @@ fn begin_joint_edit(editor: &mut Editor, assets: &mut Assets<StudioAsset>) {
         joint_name,
         animation_index: editor.animation_index,
         frame_index,
+        parent_world_angle,
+        character_scale,
         original,
     });
 }
@@ -642,9 +659,17 @@ fn move_edited_joint(editor: &Editor, assets: &mut Assets<StudioAsset>, delta: V
     else {
         return;
     };
+    let local_delta = world_edit_delta(delta, edit.parent_world_angle, edit.character_scale);
     let position = key.position.get_or_insert((0.0, 0.0));
-    position.0 += delta.x;
-    position.1 += delta.y;
+    position.0 += local_delta.x;
+    position.1 += local_delta.y;
+}
+
+fn world_edit_delta(delta: Vec2, parent_world_angle: f32, character_scale: f32) -> Vec2 {
+    rotate(
+        delta / character_scale.max(f32::EPSILON),
+        -parent_world_angle,
+    )
 }
 
 fn cancel_joint_edit(editor: &mut Editor, assets: &mut Assets<StudioAsset>) {
@@ -865,6 +890,12 @@ fn draw_editor(
                     name: joint.name.clone(),
                     position: pose.start,
                     radius: character.visuals.rig_joint_radius.max(3.5) * character.scale * 6.0,
+                    parent_world_angle: joint
+                        .parent
+                        .as_ref()
+                        .and_then(|parent| poses.get(parent))
+                        .map_or(0.0, |parent_pose| parent_pose.angle),
+                    character_scale: character.scale,
                 });
             }
             RenderMode::Drawn => {
@@ -1547,5 +1578,14 @@ mod tests {
             reparsed.character.expect("character payload").name,
             "Archer"
         );
+    }
+
+    #[test]
+    fn edit_arrows_are_converted_from_world_to_parent_local_space() {
+        assert_eq!(world_edit_delta(Vec2::X * 5.0, 0.0, 1.0), Vec2::X * 5.0);
+        let local = world_edit_delta(Vec2::X * 5.0, std::f32::consts::PI, 1.0);
+        assert!((local.x + 5.0).abs() < 0.001);
+        assert!(local.y.abs() < 0.001);
+        assert_eq!(world_edit_delta(Vec2::Y * 5.0, 0.0, 2.0), Vec2::Y * 2.5);
     }
 }

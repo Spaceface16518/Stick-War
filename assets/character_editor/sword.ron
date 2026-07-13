@@ -4,7 +4,7 @@
     weapon: Some((
         name: "Iron Sword",
         attach_joint: "hand_r",
-        position: (-23, 0),
+        position: (-35, 0),
         angle_degrees: 90,
         state: Static,
         length: 55.0,
