@@ -12,7 +12,7 @@ use bevy::{
     prelude::*,
     reflect::TypePath,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 const CHARACTER_PATHS: [&str; 2] = [
     "character_editor/swordsman.ron",
@@ -53,20 +53,20 @@ fn main() {
         .run();
 }
 
-#[derive(Asset, TypePath, Debug, Clone, Deserialize)]
+#[derive(Asset, TypePath, Debug, Clone, Serialize, Deserialize)]
 struct StudioAsset {
     kind: AssetKind,
     character: Option<CharacterDefinition>,
     weapon: Option<WeaponDefinition>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 enum AssetKind {
     Character,
     Weapon,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct CharacterDefinition {
     name: String,
     scale: f32,
@@ -79,7 +79,7 @@ struct CharacterDefinition {
     animations: Vec<AnimationDefinition>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct CharacterVisuals {
     limb_width_scale: f32,
     head_size: (f32, f32),
@@ -102,7 +102,7 @@ impl Default for CharacterVisuals {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct JointDefinition {
     name: String,
     parent: Option<String>,
@@ -114,33 +114,33 @@ struct JointDefinition {
     color: JointColor,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 enum JointColor {
     Skin,
     Team,
     Dark,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct AnimationDefinition {
     name: String,
     seconds_per_frame: f32,
     frames: Vec<Keyframe>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Keyframe {
     joints: Vec<JointKey>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct JointKey {
     joint: String,
     position: Option<(f32, f32)>,
     angle_degrees: Option<f32>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct WeaponDefinition {
     name: String,
     attach_joint: String,
@@ -153,20 +153,20 @@ struct WeaponDefinition {
     states: Vec<WeaponState>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 enum WeaponKind {
     Static,
     Bow,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct WeaponState {
     name: String,
     /// Normalized procedural draw amount. Ignored by static weapons.
     draw: f32,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 struct Rgba(f32, f32, f32, f32);
 
 impl Rgba {
@@ -214,6 +214,7 @@ struct Editor {
     render_mode: RenderMode,
     cursor_world: Vec2,
     hovered_joint: Option<String>,
+    joint_edit: Option<JointEdit>,
     reloads: u32,
     status: String,
 }
@@ -233,10 +234,20 @@ impl Default for Editor {
             render_mode: RenderMode::Drawn,
             cursor_world: Vec2::ZERO,
             hovered_joint: None,
+            joint_edit: None,
             reloads: 0,
             status: "Loading RON assets...".into(),
         }
     }
+}
+
+struct JointEdit {
+    handle: Handle<StudioAsset>,
+    asset_path: String,
+    joint_name: String,
+    animation_index: usize,
+    frame_index: usize,
+    original: StudioAsset,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -419,8 +430,57 @@ fn sync_weapon(
 fn editor_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut editor: ResMut<Editor>,
-    assets: Res<Assets<StudioAsset>>,
+    mut assets: ResMut<Assets<StudioAsset>>,
 ) {
+    let cancels_edit = [
+        KeyCode::Space,
+        KeyCode::KeyF,
+        KeyCode::KeyL,
+        KeyCode::KeyR,
+        KeyCode::KeyC,
+        KeyCode::KeyA,
+        KeyCode::KeyW,
+    ]
+    .into_iter()
+    .any(|key| keys.just_pressed(key));
+    if editor.joint_edit.is_some() && cancels_edit {
+        cancel_joint_edit(&mut editor, &mut assets);
+    }
+
+    if keys.just_pressed(KeyCode::KeyE) {
+        if editor.joint_edit.is_some() {
+            save_joint_edit(&mut editor, &assets);
+        } else {
+            begin_joint_edit(&mut editor, &mut assets);
+        }
+        return;
+    }
+
+    if editor.joint_edit.is_some() {
+        let step = if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
+            0.1
+        } else {
+            5.0
+        };
+        let mut delta = Vec2::ZERO;
+        if keys.just_pressed(KeyCode::ArrowLeft) {
+            delta.x -= step;
+        }
+        if keys.just_pressed(KeyCode::ArrowRight) {
+            delta.x += step;
+        }
+        if keys.just_pressed(KeyCode::ArrowUp) {
+            delta.y += step;
+        }
+        if keys.just_pressed(KeyCode::ArrowDown) {
+            delta.y -= step;
+        }
+        if delta != Vec2::ZERO {
+            move_edited_joint(&editor, &mut assets, delta);
+            return;
+        }
+    }
+
     if keys.just_pressed(KeyCode::Space) {
         if editor.playing {
             editor.playing = false;
@@ -487,6 +547,138 @@ fn editor_input(
     let state_count = current_weapon(&editor, &assets).map_or(0, |weapon| weapon.states.len());
     if state_count > 0 && keys.just_pressed(KeyCode::KeyW) {
         editor.weapon_state_index = (editor.weapon_state_index + 1) % state_count;
+    }
+}
+
+fn current_frame_index(editor: &Editor, animation: &AnimationDefinition) -> usize {
+    ((editor.elapsed / animation.seconds_per_frame.max(0.001)).floor() as usize)
+        .min(animation.frames.len().saturating_sub(1))
+}
+
+fn begin_joint_edit(editor: &mut Editor, assets: &mut Assets<StudioAsset>) {
+    if editor.render_mode != RenderMode::Rig {
+        editor.status = "Switch to rig view before editing".into();
+        return;
+    }
+    let Some(joint_name) = editor.hovered_joint.clone() else {
+        editor.status = "Hover a joint marker before pressing E".into();
+        return;
+    };
+    let Some(handle) = editor.characters.get(editor.character_index).cloned() else {
+        return;
+    };
+    let Some(asset_path) = handle
+        .path()
+        .map(|path| path.path().to_string_lossy().into_owned())
+    else {
+        editor.status = "Selected character has no writable asset path".into();
+        return;
+    };
+    let Some(original) = assets.get(&handle).cloned() else {
+        return;
+    };
+    let Some(mut asset) = assets.get_mut(&handle) else {
+        return;
+    };
+    let Some(character) = asset.character.as_mut() else {
+        return;
+    };
+    let Some(base_position) = character
+        .joints
+        .iter()
+        .find(|joint| joint.name == joint_name)
+        .map(|joint| joint.position)
+    else {
+        return;
+    };
+    let Some(animation) = character.animations.get_mut(editor.animation_index) else {
+        return;
+    };
+    let frame_index = current_frame_index(editor, animation);
+    let Some(frame) = animation.frames.get_mut(frame_index) else {
+        return;
+    };
+    if let Some(key) = frame.joints.iter_mut().find(|key| key.joint == joint_name) {
+        key.position.get_or_insert(base_position);
+    } else {
+        frame.joints.push(JointKey {
+            joint: joint_name.clone(),
+            position: Some(base_position),
+            angle_degrees: None,
+        });
+    }
+    editor.playing = false;
+    editor.status = format!("Editing {joint_name}; press E to save");
+    editor.joint_edit = Some(JointEdit {
+        handle,
+        asset_path,
+        joint_name,
+        animation_index: editor.animation_index,
+        frame_index,
+        original,
+    });
+}
+
+fn move_edited_joint(editor: &Editor, assets: &mut Assets<StudioAsset>, delta: Vec2) {
+    let Some(edit) = editor.joint_edit.as_ref() else {
+        return;
+    };
+    let Some(mut asset) = assets.get_mut(&edit.handle) else {
+        return;
+    };
+    let Some(character) = asset.character.as_mut() else {
+        return;
+    };
+    let Some(animation) = character.animations.get_mut(edit.animation_index) else {
+        return;
+    };
+    let Some(frame) = animation.frames.get_mut(edit.frame_index) else {
+        return;
+    };
+    let Some(key) = frame
+        .joints
+        .iter_mut()
+        .find(|key| key.joint == edit.joint_name)
+    else {
+        return;
+    };
+    let position = key.position.get_or_insert((0.0, 0.0));
+    position.0 += delta.x;
+    position.1 += delta.y;
+}
+
+fn cancel_joint_edit(editor: &mut Editor, assets: &mut Assets<StudioAsset>) {
+    let Some(edit) = editor.joint_edit.take() else {
+        return;
+    };
+    let _ = assets.insert(edit.handle.id(), edit.original);
+    editor.status = format!("Cancelled edit for {}", edit.joint_name);
+}
+
+fn save_joint_edit(editor: &mut Editor, assets: &Assets<StudioAsset>) {
+    let Some(edit) = editor.joint_edit.take() else {
+        return;
+    };
+    let result = assets
+        .get(&edit.handle)
+        .ok_or_else(|| "edited character asset is unavailable".to_owned())
+        .and_then(|asset| {
+            ron::ser::to_string_pretty(asset, ron::ser::PrettyConfig::default())
+                .map_err(|error| error.to_string())
+        })
+        .and_then(|source| {
+            std::fs::write(
+                std::path::Path::new("assets").join(&edit.asset_path),
+                source,
+            )
+            .map_err(|error| error.to_string())
+        });
+    match result {
+        Ok(()) => editor.status = format!("Saved {} to RON", edit.joint_name),
+        Err(error) => {
+            editor.status = format!("Could not save joint edit: {error}");
+            editor.joint_edit = Some(edit);
+        }
     }
 }
 
@@ -658,7 +850,14 @@ fn draw_editor(
         let Some(pose) = poses.get(&joint.name) else {
             continue;
         };
-        let color = joint_color(character, joint.color);
+        let mut color = joint_color(character, joint.color);
+        if editor
+            .joint_edit
+            .as_ref()
+            .is_some_and(|edit| edit.joint_name == joint.name)
+        {
+            color = color.with_alpha(0.3);
+        }
         match editor.render_mode {
             RenderMode::Rig => {
                 draw_rig_joint(&mut gizmos, character, pose, color);
@@ -717,6 +916,9 @@ fn update_joint_hover(markers: Res<EvaluatedJointMarkers>, mut editor: ResMut<Ed
 }
 
 fn draw_joint_hover(mut gizmos: Gizmos, markers: Res<EvaluatedJointMarkers>, editor: Res<Editor>) {
+    if editor.joint_edit.is_some() {
+        return;
+    }
     let Some(name) = editor.hovered_joint.as_deref() else {
         return;
     };
@@ -1215,6 +1417,10 @@ fn update_toolbar(
     let animation = character.and_then(|c| c.animations.get(editor.animation_index));
     let weapon = current_weapon(&editor, &assets);
     let weapon_state = weapon.and_then(|w| w.states.get(editor.weapon_state_index));
+    let edit_label = editor
+        .joint_edit
+        .as_ref()
+        .map_or("--", |edit| edit.joint_name.as_str());
     let frame = animation.map_or(0, |animation| {
         ((editor.elapsed / animation.seconds_per_frame.max(0.001)).floor() as usize)
             .min(animation.frames.len().saturating_sub(1))
@@ -1222,8 +1428,8 @@ fn update_toolbar(
 
     **text = format!(
         "CHARACTER  {}   |   ANIMATION  {}   |   FRAME  {}/{}   |   TIME  {:.2}s   |   {:.3}s/frame\n\
-         VIEW  {}   |   JOINT  {}   |   WEAPON  {}   |   STATE  {}   |   PLAYBACK  {} / {}   |   GRID  {}   |   CURSOR  ({:.1}, {:.1})\n\
-         [V] drawn/rig   [C] character   [A] animation   [W] weapon state   [Space] play/pause   [F] next frame   [L] loop/once   [R] restart   [G] grid   |   {} (reload #{})",
+         VIEW  {}   |   JOINT  {}   |   EDITING  {}   |   WEAPON  {}   |   STATE  {}   |   PLAYBACK  {} / {}   |   GRID  {}   |   CURSOR  ({:.1}, {:.1})\n\
+         [E] edit/save   [Arrows] move 5   [Shift+Arrows] move 0.1   [V] drawn/rig   [C] character   [A] animation   [W] weapon state   [Space] play/pause   [F] next frame   [L] loop/once   [R] restart   [G] grid   |   {} (reload #{})",
         character.map_or("--", |c| c.name.as_str()),
         animation.map_or("--", |a| a.name.as_str()),
         frame + 1,
@@ -1232,6 +1438,7 @@ fn update_toolbar(
         animation.map_or(0.0, |a| a.seconds_per_frame),
         editor.render_mode.label(),
         editor.hovered_joint.as_deref().unwrap_or("--"),
+        edit_label,
         weapon.map_or("--", |w| w.name.as_str()),
         weapon_state.map_or("--", |state| state.name.as_str()),
         if editor.playing { "playing" } else { "paused" },
@@ -1327,5 +1534,18 @@ mod tests {
         assert_eq!(next_frame_elapsed(0.1, 0.1, 3, false), 0.2);
         assert_eq!(next_frame_elapsed(0.2, 0.1, 3, false), 0.2);
         assert_eq!(next_frame_elapsed(0.2, 0.1, 3, true), 0.0);
+    }
+
+    #[test]
+    fn editable_character_assets_round_trip_through_pretty_ron() {
+        let asset = parse(include_str!("../assets/character_editor/archer.ron"));
+        let serialized = ron::ser::to_string_pretty(&asset, ron::ser::PrettyConfig::default())
+            .expect("character asset should serialize");
+        let reparsed: StudioAsset =
+            ron::from_str(&serialized).expect("serialized character should deserialize");
+        assert_eq!(
+            reparsed.character.expect("character payload").name,
+            "Archer"
+        );
     }
 }

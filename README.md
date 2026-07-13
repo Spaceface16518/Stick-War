@@ -122,3 +122,9 @@ Joint `length` is optional. Without it, the rendered bone connects directly to
 the first child joint; leaf joints become attachment points. Use an explicit
 length only for intentional offsets such as placing the head ellipse above its
 joint.
+
+In rig view, hover a joint and press <kbd>E</kbd> to edit its position key for
+the current animation frame. Arrow keys move by 5 units and Shift+arrow moves
+by 0.1 units. Press <kbd>E</kbd> again to serialize the character back to its RON
+file. Playback, frame stepping, restart, and character/animation/weapon-state
+changes cancel the pending edit and restore the pre-edit asset.
