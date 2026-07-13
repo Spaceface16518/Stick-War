@@ -452,6 +452,22 @@ fn editor_input(
         editor.elapsed = 0.0;
         editor.playing = true;
     }
+    if keys.just_pressed(KeyCode::KeyF) {
+        let next_elapsed = current_character(&editor, &assets)
+            .and_then(|character| character.animations.get(editor.animation_index))
+            .map(|animation| {
+                next_frame_elapsed(
+                    editor.elapsed,
+                    animation.seconds_per_frame,
+                    animation.frames.len(),
+                    editor.looping,
+                )
+            });
+        if let Some(next_elapsed) = next_elapsed {
+            editor.elapsed = next_elapsed;
+            editor.playing = false;
+        }
+    }
     if keys.just_pressed(KeyCode::KeyC) && !editor.characters.is_empty() {
         editor.character_index = (editor.character_index + 1) % editor.characters.len();
         editor.animation_index = 0;
@@ -524,6 +540,27 @@ fn resume_elapsed(elapsed: f32, duration: f32, looping: bool) -> f32 {
     } else {
         elapsed
     }
+}
+
+fn next_frame_elapsed(
+    elapsed: f32,
+    seconds_per_frame: f32,
+    frame_count: usize,
+    looping: bool,
+) -> f32 {
+    if frame_count == 0 {
+        return 0.0;
+    }
+    let seconds_per_frame = seconds_per_frame.max(0.001);
+    let current = ((elapsed / seconds_per_frame).floor() as usize).min(frame_count - 1);
+    let next = if current + 1 < frame_count {
+        current + 1
+    } else if looping {
+        0
+    } else {
+        current
+    };
+    next as f32 * seconds_per_frame
 }
 
 #[derive(Clone, Copy)]
@@ -1186,7 +1223,7 @@ fn update_toolbar(
     **text = format!(
         "CHARACTER  {}   |   ANIMATION  {}   |   FRAME  {}/{}   |   TIME  {:.2}s   |   {:.3}s/frame\n\
          VIEW  {}   |   JOINT  {}   |   WEAPON  {}   |   STATE  {}   |   PLAYBACK  {} / {}   |   GRID  {}   |   CURSOR  ({:.1}, {:.1})\n\
-         [V] drawn/rig   [C] character   [A] animation   [W] weapon state   [Space] play/pause   [L] loop/once   [R] restart   [G] grid   |   {} (reload #{})",
+         [V] drawn/rig   [C] character   [A] animation   [W] weapon state   [Space] play/pause   [F] next frame   [L] loop/once   [R] restart   [G] grid   |   {} (reload #{})",
         character.map_or("--", |c| c.name.as_str()),
         animation.map_or("--", |a| a.name.as_str()),
         frame + 1,
@@ -1246,14 +1283,12 @@ mod tests {
                             );
                         }
                     }
-                    assert_eq!(
+                    assert!(
                         character
                             .joints
                             .iter()
                             .filter(|joint| joint.length.is_some())
-                            .map(|joint| joint.name.as_str())
-                            .collect::<Vec<_>>(),
-                        vec!["head"]
+                            .all(|joint| joint.name == "head")
                     );
                 }
                 AssetKind::Weapon => {
@@ -1284,5 +1319,13 @@ mod tests {
             marker_hit_distance(Vec2::new(10.0, 40.0), marker, 8.0),
             None
         );
+    }
+
+    #[test]
+    fn frame_step_pauses_on_exact_frames_and_honors_playback_mode() {
+        assert_eq!(next_frame_elapsed(0.03, 0.1, 3, false), 0.1);
+        assert_eq!(next_frame_elapsed(0.1, 0.1, 3, false), 0.2);
+        assert_eq!(next_frame_elapsed(0.2, 0.1, 3, false), 0.2);
+        assert_eq!(next_frame_elapsed(0.2, 0.1, 3, true), 0.0);
     }
 }
