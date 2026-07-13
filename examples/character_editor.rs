@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 use bevy::{
     asset::{AssetLoader, LoadContext, io::Reader},
+    ecs::system::SystemParam,
     prelude::*,
     reflect::TypePath,
 };
@@ -273,6 +274,13 @@ struct PreviewAssets {
     arrow: Handle<ColorMaterial>,
 }
 
+#[derive(SystemParam)]
+struct EditorViewport<'w, 's> {
+    windows: Query<'w, 's, &'static Window>,
+    cameras: Query<'w, 's, (&'static Camera, &'static GlobalTransform), With<EditorCamera>>,
+    preview_entities: Query<'w, 's, Entity, With<DrawnPreview>>,
+}
+
 fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -447,13 +455,11 @@ fn editor_input(
     }
 }
 
-fn update_cursor(
-    windows: Query<&Window>,
-    cameras: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
-    mut editor: ResMut<Editor>,
-) {
-    let Ok(window) = windows.single() else { return };
-    let Ok((camera, camera_transform)) = cameras.single() else {
+fn update_cursor(viewport: EditorViewport, mut editor: ResMut<Editor>) {
+    let Ok(window) = viewport.windows.single() else {
+        return;
+    };
+    let Ok((camera, camera_transform)) = viewport.cameras.single() else {
         return;
     };
     let Some(cursor) = window.cursor_position() else {
@@ -515,10 +521,10 @@ fn draw_editor(
     assets: Res<Assets<StudioAsset>>,
     preview_assets: Res<PreviewAssets>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    old_preview: Query<Entity, With<DrawnPreview>>,
+    viewport: EditorViewport,
 ) {
     editor.hovered_joint = None;
-    for entity in &old_preview {
+    for entity in &viewport.preview_entities {
         commands.entity(entity).despawn();
     }
     if editor.show_grid {
@@ -581,17 +587,27 @@ fn draw_editor(
     }
 
     if editor.render_mode == RenderMode::Rig {
-        let hover_radius = character.visuals.rig_joint_radius.max(3.5) * character.scale * 6.0;
-        let hovered = character
-            .joints
-            .iter()
-            .filter_map(|joint| {
-                let pose = poses.get(&joint.name)?;
-                marker_hit_distance(editor.cursor_world, pose.start, hover_radius)
-                    .map(|distance| (joint.name.as_str(), distance))
-            })
-            .min_by(|(_, left), (_, right)| left.total_cmp(right))
-            .map(|(name, _)| name.to_owned());
+        let hovered = viewport
+            .windows
+            .single()
+            .ok()
+            .and_then(|window| window.cursor_position())
+            .and_then(|cursor| {
+                let (camera, camera_transform) = viewport.cameras.single().ok()?;
+                character
+                    .joints
+                    .iter()
+                    .filter_map(|joint| {
+                        let pose = poses.get(&joint.name)?;
+                        let marker = camera
+                            .world_to_viewport(camera_transform, pose.start.extend(0.0))
+                            .ok()?;
+                        marker_hit_distance(cursor, marker, 18.0)
+                            .map(|distance| (joint.name.as_str(), distance))
+                    })
+                    .min_by(|(_, left), (_, right)| left.total_cmp(right))
+                    .map(|(name, _)| name.to_owned())
+            });
         if let Some(name) = hovered.as_deref()
             && let Some(pose) = poses.get(name)
         {
