@@ -5,6 +5,14 @@
         scale: 1.35,
         skin_color: (0.91, 0.74, 0.55, 1.0),
         team_color: (0.28, 0.72, 0.36, 1.0),
+        visuals: (
+            limb_width_scale: 0.95,
+            head_size: (24.0, 29.0),
+            hand_size: (10.0, 13.0),
+            foot_size: (18.0, 9.0),
+            rig_line_width: 2.0,
+            rig_joint_radius: 3.5,
+        ),
         weapon: "character_editor/bow.ron",
         joints: [
             (name: "hips", parent: None, position: (0.0, 0.0), angle_degrees: 0.0, length: 24.0, thickness: 12.0, color: Team),

@@ -115,3 +115,6 @@ attach to a named hand joint; the sword is static, while the bow demonstrates
 procedural string and arrow states layered onto the animated hand transform.
 The editor toolbar lists its keyboard controls, current frame/time, loaded
 assets, playback mode, hot-reload count, and cursor world coordinates.
+Press <kbd>V</kbd> to switch between the clean drawn-character preview and the
+colored rig view. The character RON `visuals` block controls rounded limb width,
+head/hand/foot ellipse sizes, and rig overlay dimensions.

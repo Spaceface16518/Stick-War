@@ -4,7 +4,7 @@
 //! `assets/character_editor/`. The asset server reloads character keyframes and
 //! independent weapon definitions without restarting the editor.
 
-use std::{collections::HashMap, f32::consts::TAU};
+use std::collections::HashMap;
 
 use bevy::{
     asset::{AssetLoader, LoadContext, io::Reader},
@@ -68,9 +68,34 @@ struct CharacterDefinition {
     scale: f32,
     skin_color: Rgba,
     team_color: Rgba,
+    #[serde(default)]
+    visuals: CharacterVisuals,
     weapon: String,
     joints: Vec<JointDefinition>,
     animations: Vec<AnimationDefinition>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CharacterVisuals {
+    limb_width_scale: f32,
+    head_size: (f32, f32),
+    hand_size: (f32, f32),
+    foot_size: (f32, f32),
+    rig_line_width: f32,
+    rig_joint_radius: f32,
+}
+
+impl Default for CharacterVisuals {
+    fn default() -> Self {
+        Self {
+            limb_width_scale: 1.0,
+            head_size: (25.0, 30.0),
+            hand_size: (11.0, 14.0),
+            foot_size: (19.0, 10.0),
+            rig_line_width: 2.0,
+            rig_joint_radius: 3.5,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -181,6 +206,7 @@ struct Editor {
     playing: bool,
     looping: bool,
     show_grid: bool,
+    render_mode: RenderMode,
     cursor_world: Vec2,
     reloads: u32,
     status: String,
@@ -198,9 +224,25 @@ impl Default for Editor {
             playing: true,
             looping: true,
             show_grid: true,
+            render_mode: RenderMode::Drawn,
             cursor_world: Vec2::ZERO,
             reloads: 0,
             status: "Loading RON assets...".into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RenderMode {
+    Drawn,
+    Rig,
+}
+
+impl RenderMode {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Drawn => "drawn",
+            Self::Rig => "rig",
         }
     }
 }
@@ -333,6 +375,12 @@ fn editor_input(
     if keys.just_pressed(KeyCode::KeyG) {
         editor.show_grid = !editor.show_grid;
     }
+    if keys.just_pressed(KeyCode::KeyV) {
+        editor.render_mode = match editor.render_mode {
+            RenderMode::Drawn => RenderMode::Rig,
+            RenderMode::Rig => RenderMode::Drawn,
+        };
+    }
     if keys.just_pressed(KeyCode::KeyR) {
         editor.elapsed = 0.0;
         editor.playing = true;
@@ -415,6 +463,7 @@ fn resume_elapsed(elapsed: f32, duration: f32, looping: bool) -> f32 {
 
 #[derive(Clone, Copy)]
 struct JointPose {
+    start: Vec2,
     angle: f32,
     end: Vec2,
 }
@@ -457,44 +506,98 @@ fn draw_editor(mut gizmos: Gizmos, editor: Res<Editor>, assets: Res<Assets<Studi
         let start = parent_end + rotate(local_offset, parent_angle);
         let angle = parent_angle + local_angle;
         let end = start + rotate(Vec2::Y * joint.length * character.scale, angle);
-        let color = match joint.color {
-            JointColor::Skin => character.skin_color.color(),
-            JointColor::Team => character.team_color.color(),
-            JointColor::Dark => Color::srgb(0.08, 0.09, 0.12),
+        poses.insert(joint.name.clone(), JointPose { start, angle, end });
+    }
+
+    for joint in &character.joints {
+        let Some(pose) = poses.get(&joint.name) else {
+            continue;
         };
-        draw_thick_line(
-            &mut gizmos,
-            start,
-            end,
-            joint.thickness * character.scale,
-            color,
-        );
-        draw_circle(
-            &mut gizmos,
-            start,
-            joint.thickness * 0.55 * character.scale,
-            color,
-        );
-        if joint.name == "head" {
-            draw_circle(
-                &mut gizmos,
-                end,
-                joint.thickness * 0.72 * character.scale,
-                color,
-            );
+        let color = joint_color(character, joint.color);
+        match editor.render_mode {
+            RenderMode::Rig => draw_rig_joint(&mut gizmos, character, pose, color),
+            RenderMode::Drawn => draw_character_joint(&mut gizmos, character, joint, pose, color),
         }
-        poses.insert(joint.name.clone(), JointPose { angle, end });
     }
 
     if let Some(weapon) = current_weapon(&editor, &assets)
         && let Some(hand) = poses.get(&weapon.attach_joint)
     {
-        draw_weapon(
+        draw_weapon_sprite(
             &mut gizmos,
             weapon,
             hand,
             editor.weapon_state_index,
             character.scale,
+        );
+    }
+}
+
+fn joint_color(character: &CharacterDefinition, color: JointColor) -> Color {
+    match color {
+        JointColor::Skin => character.skin_color.color(),
+        JointColor::Team => character.team_color.color(),
+        JointColor::Dark => Color::srgb(0.08, 0.09, 0.12),
+    }
+}
+
+fn draw_rig_joint(
+    gizmos: &mut Gizmos,
+    character: &CharacterDefinition,
+    pose: &JointPose,
+    color: Color,
+) {
+    draw_rounded_line(
+        gizmos,
+        pose.start,
+        pose.end,
+        character.visuals.rig_line_width * character.scale,
+        color,
+    );
+    draw_filled_ellipse(
+        gizmos,
+        pose.start,
+        Vec2::splat(character.visuals.rig_joint_radius * character.scale),
+        0.0,
+        color,
+    );
+}
+
+fn draw_character_joint(
+    gizmos: &mut Gizmos,
+    character: &CharacterDefinition,
+    joint: &JointDefinition,
+    pose: &JointPose,
+    color: Color,
+) {
+    draw_rounded_line(
+        gizmos,
+        pose.start,
+        pose.end,
+        joint.thickness * character.visuals.limb_width_scale * character.scale,
+        color,
+    );
+
+    let terminal = !character
+        .joints
+        .iter()
+        .any(|candidate| candidate.parent.as_deref() == Some(joint.name.as_str()));
+    let feature = if joint.name == "head" {
+        Some(character.visuals.head_size)
+    } else if joint.name.contains("hand") || (terminal && joint.name.contains("forearm")) {
+        Some(character.visuals.hand_size)
+    } else if terminal && (joint.name.contains("shin") || joint.name.contains("leg")) {
+        Some(character.visuals.foot_size)
+    } else {
+        None
+    };
+    if let Some((width, height)) = feature {
+        draw_filled_ellipse(
+            gizmos,
+            pose.end,
+            Vec2::new(width, height) * character.scale * 0.5,
+            pose.angle,
+            color,
         );
     }
 }
@@ -506,7 +609,7 @@ fn keyed_pose(joint: &JointDefinition, frame: Option<&Keyframe>) -> (Vec2, f32) 
     (Vec2::new(offset.0, offset.1), angle)
 }
 
-fn draw_weapon(
+fn draw_weapon_sprite(
     gizmos: &mut Gizmos,
     weapon: &WeaponDefinition,
     hand: &JointPose,
@@ -526,26 +629,76 @@ fn draw_weapon(
 
     match weapon.state {
         WeaponKind::Static => {
-            draw_thick_line(
+            // A small stacked sword sprite: dark outline, steel blade, center
+            // highlight, crossguard, grip, and pommel.
+            draw_rounded_line(
+                gizmos,
+                position - axis * half,
+                position + axis * half,
+                (weapon.width + 3.0) * scale,
+                Color::srgb(0.10, 0.12, 0.16),
+            );
+            draw_rounded_line(
                 gizmos,
                 position - axis * half,
                 position + axis * half,
                 weapon.width * scale,
                 color,
             );
-            draw_thick_line(
+            gizmos.line_2d(
+                position - axis * half,
+                position + axis * half,
+                Color::srgba(1.0, 1.0, 1.0, 0.65),
+            );
+            draw_rounded_line(
                 gizmos,
                 position - side * 9.0 * scale,
                 position + side * 9.0 * scale,
-                4.0 * scale,
-                Color::srgb(0.45, 0.28, 0.12),
+                5.0 * scale,
+                Color::srgb(0.78, 0.57, 0.18),
+            );
+            draw_rounded_line(
+                gizmos,
+                position - axis * half,
+                position - axis * (half + 13.0 * scale),
+                6.0 * scale,
+                Color::srgb(0.35, 0.19, 0.09),
+            );
+            draw_filled_ellipse(
+                gizmos,
+                position - axis * (half + 15.0 * scale),
+                Vec2::splat(5.0 * scale),
+                angle,
+                Color::srgb(0.78, 0.57, 0.18),
             );
         }
         WeaponKind::Bow => {
             let top = position + axis * half;
             let bottom = position - axis * half;
             let belly = side * 12.0 * scale;
-            gizmos.linestrip_2d([bottom, position + belly, top], color);
+            // Layered bow sprite with a dark silhouette and warm inner stave.
+            draw_rounded_line(
+                gizmos,
+                bottom,
+                position + belly,
+                (weapon.width + 3.0) * scale,
+                Color::srgb(0.12, 0.07, 0.035),
+            );
+            draw_rounded_line(
+                gizmos,
+                position + belly,
+                top,
+                (weapon.width + 3.0) * scale,
+                Color::srgb(0.12, 0.07, 0.035),
+            );
+            draw_rounded_line(
+                gizmos,
+                bottom,
+                position + belly,
+                weapon.width * scale,
+                color,
+            );
+            draw_rounded_line(gizmos, position + belly, top, weapon.width * scale, color);
             let draw = weapon
                 .states
                 .get(state_index)
@@ -555,7 +708,7 @@ fn draw_weapon(
             gizmos.line_2d(nock, bottom, Color::srgb(0.88, 0.82, 0.68));
             if draw > 0.05 {
                 let arrow_tip = nock + side * (62.0 + draw * 18.0) * scale;
-                draw_thick_line(
+                draw_rounded_line(
                     gizmos,
                     nock,
                     arrow_tip,
@@ -602,19 +755,31 @@ fn draw_grid(gizmos: &mut Gizmos) {
     );
 }
 
-fn draw_thick_line(gizmos: &mut Gizmos, start: Vec2, end: Vec2, width: f32, color: Color) {
+fn draw_rounded_line(gizmos: &mut Gizmos, start: Vec2, end: Vec2, width: f32, color: Color) {
     let normal = (end - start).normalize_or_zero().perp() * width * 0.5;
-    for factor in [-1.0, -0.5, 0.0, 0.5, 1.0] {
+    for factor in [-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0] {
         gizmos.line_2d(start + normal * factor, end + normal * factor, color);
     }
+    draw_filled_ellipse(gizmos, start, Vec2::splat(width * 0.5), 0.0, color);
+    draw_filled_ellipse(gizmos, end, Vec2::splat(width * 0.5), 0.0, color);
 }
 
-fn draw_circle(gizmos: &mut Gizmos, center: Vec2, radius: f32, color: Color) {
-    let points = (0..=20).map(|index| {
-        let angle = index as f32 / 20.0 * TAU;
-        center + Vec2::from_angle(angle) * radius
-    });
-    gizmos.linestrip_2d(points, color);
+fn draw_filled_ellipse(
+    gizmos: &mut Gizmos,
+    center: Vec2,
+    radii: Vec2,
+    rotation: f32,
+    color: Color,
+) {
+    let steps = 12;
+    for step in -steps..=steps {
+        let normalized_y = step as f32 / steps as f32;
+        let half_width = radii.x * (1.0 - normalized_y * normalized_y).sqrt();
+        let local_y = normalized_y * radii.y;
+        let start = center + rotate(Vec2::new(-half_width, local_y), rotation);
+        let end = center + rotate(Vec2::new(half_width, local_y), rotation);
+        gizmos.line_2d(start, end, color);
+    }
 }
 
 fn rotate(vector: Vec2, angle: f32) -> Vec2 {
@@ -625,7 +790,7 @@ fn rotate(vector: Vec2, angle: f32) -> Vec2 {
 }
 
 fn shortest_angle(from: f32, to: f32) -> f32 {
-    (to - from + std::f32::consts::PI).rem_euclid(TAU) - std::f32::consts::PI
+    (to - from + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI
 }
 
 fn update_toolbar(
@@ -647,14 +812,15 @@ fn update_toolbar(
 
     **text = format!(
         "CHARACTER  {}   |   ANIMATION  {}   |   FRAME  {}/{}   |   TIME  {:.2}s   |   {:.3}s/frame\n\
-         WEAPON  {}   |   STATE  {}   |   PLAYBACK  {} / {}   |   GRID  {}   |   CURSOR  ({:.1}, {:.1})\n\
-         [C] character   [A] animation   [W] weapon state   [Space] play/pause   [L] loop/once   [R] restart   [G] grid   |   {} (reload #{})",
+         VIEW  {}   |   WEAPON  {}   |   STATE  {}   |   PLAYBACK  {} / {}   |   GRID  {}   |   CURSOR  ({:.1}, {:.1})\n\
+         [V] drawn/rig   [C] character   [A] animation   [W] weapon state   [Space] play/pause   [L] loop/once   [R] restart   [G] grid   |   {} (reload #{})",
         character.map_or("--", |c| c.name.as_str()),
         animation.map_or("--", |a| a.name.as_str()),
         frame + 1,
         animation.map_or(0, |a| a.frames.len()),
         editor.elapsed,
         animation.map_or(0.0, |a| a.seconds_per_frame),
+        editor.render_mode.label(),
         weapon.map_or("--", |w| w.name.as_str()),
         weapon_state.map_or("--", |state| state.name.as_str()),
         if editor.playing { "playing" } else { "paused" },
