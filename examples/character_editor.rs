@@ -208,6 +208,7 @@ struct Editor {
     show_grid: bool,
     render_mode: RenderMode,
     cursor_world: Vec2,
+    hovered_joint: Option<String>,
     reloads: u32,
     status: String,
 }
@@ -226,6 +227,7 @@ impl Default for Editor {
             show_grid: true,
             render_mode: RenderMode::Drawn,
             cursor_world: Vec2::ZERO,
+            hovered_joint: None,
             reloads: 0,
             status: "Loading RON assets...".into(),
         }
@@ -509,12 +511,13 @@ struct JointPose {
 fn draw_editor(
     mut commands: Commands,
     mut gizmos: Gizmos,
-    editor: Res<Editor>,
+    mut editor: ResMut<Editor>,
     assets: Res<Assets<StudioAsset>>,
     preview_assets: Res<PreviewAssets>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     old_preview: Query<Entity, With<DrawnPreview>>,
 ) {
+    editor.hovered_joint = None;
     for entity in &old_preview {
         commands.entity(entity).despawn();
     }
@@ -575,6 +578,20 @@ fn draw_editor(
                 spawn_character_joint(&mut commands, &preview_assets, character, joint, pose)
             }
         }
+    }
+
+    if editor.render_mode == RenderMode::Rig {
+        let hover_radius = character.visuals.rig_joint_radius.max(3.5) * character.scale * 3.0;
+        editor.hovered_joint = character
+            .joints
+            .iter()
+            .filter_map(|joint| {
+                let pose = poses.get(&joint.name)?;
+                let distance = pose.start.distance(editor.cursor_world);
+                (distance <= hover_radius).then_some((joint.name.as_str(), distance))
+            })
+            .min_by(|(_, left), (_, right)| left.total_cmp(right))
+            .map(|(name, _)| name.to_owned());
     }
 
     if let Some(weapon) = current_weapon(&editor, &assets)
@@ -1088,7 +1105,7 @@ fn update_toolbar(
 
     **text = format!(
         "CHARACTER  {}   |   ANIMATION  {}   |   FRAME  {}/{}   |   TIME  {:.2}s   |   {:.3}s/frame\n\
-         VIEW  {}   |   WEAPON  {}   |   STATE  {}   |   PLAYBACK  {} / {}   |   GRID  {}   |   CURSOR  ({:.1}, {:.1})\n\
+         VIEW  {}   |   JOINT  {}   |   WEAPON  {}   |   STATE  {}   |   PLAYBACK  {} / {}   |   GRID  {}   |   CURSOR  ({:.1}, {:.1})\n\
          [V] drawn/rig   [C] character   [A] animation   [W] weapon state   [Space] play/pause   [L] loop/once   [R] restart   [G] grid   |   {} (reload #{})",
         character.map_or("--", |c| c.name.as_str()),
         animation.map_or("--", |a| a.name.as_str()),
@@ -1097,6 +1114,7 @@ fn update_toolbar(
         editor.elapsed,
         animation.map_or(0.0, |a| a.seconds_per_frame),
         editor.render_mode.label(),
+        editor.hovered_joint.as_deref().unwrap_or("--"),
         weapon.map_or("--", |w| w.name.as_str()),
         weapon_state.map_or("--", |state| state.name.as_str()),
         if editor.playing { "playing" } else { "paused" },
