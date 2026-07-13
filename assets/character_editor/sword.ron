@@ -1,0 +1,15 @@
+(
+    kind: Weapon,
+    character: None,
+    weapon: Some((
+        name: "Iron Sword",
+        attach_joint: "hand_r",
+        position: (0.0, 24.0),
+        angle_degrees: 0.0,
+        state: Static,
+        length: 55.0,
+        width: 7.0,
+        color: (0.82, 0.86, 0.92, 1.0),
+        states: [(name: "ready", draw: 0.0), (name: "strike", draw: 0.0)],
+    )),
+)

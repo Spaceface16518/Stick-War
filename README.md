@@ -98,3 +98,20 @@ animation; leaving it cleans up battle entities and restores reactive updates.
 This policy is centralized in the computed `RuntimeActivity` state: new screens
 default to reactive behavior, while states that run gameplay simulation must be
 explicitly classified as continuous.
+
+## Character animation editor
+
+The repository includes a native example for authoring hot-reloaded, rigged 2D
+characters and modular weapons:
+
+```sh
+cargo run --example character_editor --locked
+```
+
+While it runs, edit the character, animation, and weapon definitions under
+`assets/character_editor/`. Character RON files contain the joint hierarchy,
+appearance, animation timing, and keyframes. Weapon RON files are separate and
+attach to a named hand joint; the sword is static, while the bow demonstrates
+procedural string and arrow states layered onto the animated hand transform.
+The editor toolbar lists its keyboard controls, current frame/time, loaded
+assets, playback mode, hot-reload count, and cursor world coordinates.

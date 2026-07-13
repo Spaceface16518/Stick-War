@@ -1,0 +1,42 @@
+(
+    kind: Character,
+    character: Some((
+        name: "Swordsman",
+        scale: 1.35,
+        skin_color: (0.94, 0.78, 0.59, 1.0),
+        team_color: (0.18, 0.55, 0.95, 1.0),
+        weapon: "character_editor/sword.ron",
+        joints: [
+            (name: "hips", parent: None, position: (0.0, 0.0), angle_degrees: 0.0, length: 24.0, thickness: 12.0, color: Team),
+            (name: "chest", parent: Some("hips"), position: (0.0, 22.0), angle_degrees: 0.0, length: 38.0, thickness: 15.0, color: Dark),
+            (name: "head", parent: Some("chest"), position: (0.0, 35.0), angle_degrees: 0.0, length: 22.0, thickness: 22.0, color: Skin),
+            (name: "upper_arm_l", parent: Some("chest"), position: (-10.0, 27.0), angle_degrees: 205.0, length: 27.0, thickness: 8.0, color: Team),
+            (name: "forearm_l", parent: Some("upper_arm_l"), position: (0.0, 27.0), angle_degrees: -18.0, length: 25.0, thickness: 7.0, color: Skin),
+            (name: "upper_arm_r", parent: Some("chest"), position: (10.0, 27.0), angle_degrees: -28.0, length: 27.0, thickness: 8.0, color: Team),
+            (name: "hand_r", parent: Some("upper_arm_r"), position: (0.0, 27.0), angle_degrees: 12.0, length: 25.0, thickness: 7.0, color: Skin),
+            (name: "thigh_l", parent: Some("hips"), position: (-7.0, 0.0), angle_degrees: 190.0, length: 32.0, thickness: 10.0, color: Team),
+            (name: "shin_l", parent: Some("thigh_l"), position: (0.0, 31.0), angle_degrees: -8.0, length: 31.0, thickness: 8.0, color: Dark),
+            (name: "thigh_r", parent: Some("hips"), position: (7.0, 0.0), angle_degrees: 170.0, length: 32.0, thickness: 10.0, color: Team),
+            (name: "shin_r", parent: Some("thigh_r"), position: (0.0, 31.0), angle_degrees: 8.0, length: 31.0, thickness: 8.0, color: Dark),
+        ],
+        animations: [
+            (name: "idle", seconds_per_frame: 0.18, frames: [
+                (joints: [(joint: "chest", position: None, angle_degrees: Some(-1.5)), (joint: "head", position: Some((0.0, 1.0)), angle_degrees: None)]),
+                (joints: [(joint: "chest", position: None, angle_degrees: Some(1.5)), (joint: "head", position: Some((0.0, -1.0)), angle_degrees: None)]),
+            ]),
+            (name: "walk", seconds_per_frame: 0.11, frames: [
+                (joints: [(joint: "thigh_l", position: None, angle_degrees: Some(22.0)), (joint: "thigh_r", position: None, angle_degrees: Some(-22.0)), (joint: "upper_arm_l", position: None, angle_degrees: Some(-18.0)), (joint: "upper_arm_r", position: None, angle_degrees: Some(18.0))]),
+                (joints: [(joint: "thigh_l", position: None, angle_degrees: Some(0.0)), (joint: "thigh_r", position: None, angle_degrees: Some(0.0))]),
+                (joints: [(joint: "thigh_l", position: None, angle_degrees: Some(-22.0)), (joint: "thigh_r", position: None, angle_degrees: Some(22.0)), (joint: "upper_arm_l", position: None, angle_degrees: Some(18.0)), (joint: "upper_arm_r", position: None, angle_degrees: Some(-18.0))]),
+                (joints: [(joint: "thigh_l", position: None, angle_degrees: Some(0.0)), (joint: "thigh_r", position: None, angle_degrees: Some(0.0))]),
+            ]),
+            (name: "attack", seconds_per_frame: 0.09, frames: [
+                (joints: [(joint: "upper_arm_r", position: None, angle_degrees: Some(55.0)), (joint: "hand_r", position: None, angle_degrees: Some(25.0)), (joint: "chest", position: None, angle_degrees: Some(-8.0))]),
+                (joints: [(joint: "upper_arm_r", position: None, angle_degrees: Some(100.0)), (joint: "hand_r", position: None, angle_degrees: Some(15.0)), (joint: "chest", position: None, angle_degrees: Some(-12.0))]),
+                (joints: [(joint: "upper_arm_r", position: None, angle_degrees: Some(-70.0)), (joint: "hand_r", position: None, angle_degrees: Some(-15.0)), (joint: "chest", position: None, angle_degrees: Some(12.0))]),
+                (joints: [(joint: "upper_arm_r", position: None, angle_degrees: Some(-28.0)), (joint: "hand_r", position: None, angle_degrees: Some(12.0)), (joint: "chest", position: None, angle_degrees: Some(0.0))]),
+            ]),
+        ],
+    )),
+    weapon: None,
+)

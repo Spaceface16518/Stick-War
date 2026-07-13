@@ -15,6 +15,10 @@ bevy = { version = "0.19", features = ["file_watcher"] }
 default = ["fast-compile"]
 fast-compile = ["bevy/dynamic_linking"]
 
+[[example]]
+name = "character_editor"
+path = "examples/character_editor.rs"
+
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
 opt-level = 1
