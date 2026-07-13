@@ -209,6 +209,7 @@ struct Editor {
     weapon: Option<Handle<StudioAsset>>,
     character_index: usize,
     animation_index: usize,
+    base_model_mode: bool,
     weapon_state_index: usize,
     elapsed: f32,
     playing: bool,
@@ -229,6 +230,7 @@ impl Default for Editor {
             weapon: None,
             character_index: 0,
             animation_index: 0,
+            base_model_mode: false,
             weapon_state_index: 0,
             elapsed: 0.0,
             playing: true,
@@ -248,14 +250,19 @@ struct JointEdit {
     handle: Handle<StudioAsset>,
     asset_path: String,
     joint_name: String,
-    animation_index: usize,
-    frame_index: usize,
+    target: EditTarget,
     parent_world_angle: f32,
     character_scale: f32,
     start_position: (f32, f32),
     anchor_world: Vec2,
     mouse_dragging: bool,
     original: StudioAsset,
+}
+
+#[derive(Clone, Copy)]
+enum EditTarget {
+    BaseModel,
+    Animation { animation: usize, frame: usize },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -391,6 +398,15 @@ fn current_character<'a>(
         .flatten()
 }
 
+fn current_animation<'a>(
+    editor: &Editor,
+    character: &'a CharacterDefinition,
+) -> Option<&'a AnimationDefinition> {
+    (!editor.base_model_mode)
+        .then(|| character.animations.get(editor.animation_index))
+        .flatten()
+}
+
 fn current_weapon<'a>(
     editor: &Editor,
     assets: &'a Assets<StudioAsset>,
@@ -502,11 +518,14 @@ fn editor_input(
     }
 
     if keys.just_pressed(KeyCode::Space) {
-        if editor.playing {
+        if editor.base_model_mode {
+            editor.playing = false;
+            editor.status = "Base model has no playback".into();
+        } else if editor.playing {
             editor.playing = false;
         } else {
             let duration = current_character(&editor, &assets)
-                .and_then(|character| character.animations.get(editor.animation_index))
+                .and_then(|character| current_animation(&editor, character))
                 .map(animation_duration);
             if let Some(duration) = duration {
                 editor.elapsed = resume_elapsed(editor.elapsed, duration, editor.looping);
@@ -517,7 +536,7 @@ fn editor_input(
     if keys.just_pressed(KeyCode::KeyL) {
         editor.looping = !editor.looping;
         editor.elapsed = 0.0;
-        editor.playing = true;
+        editor.playing = !editor.base_model_mode;
     }
     if keys.just_pressed(KeyCode::KeyG) {
         editor.show_grid = !editor.show_grid;
@@ -530,11 +549,11 @@ fn editor_input(
     }
     if keys.just_pressed(KeyCode::KeyR) {
         editor.elapsed = 0.0;
-        editor.playing = true;
+        editor.playing = !editor.base_model_mode;
     }
     if keys.just_pressed(KeyCode::KeyF) {
         let next_elapsed = current_character(&editor, &assets)
-            .and_then(|character| character.animations.get(editor.animation_index))
+            .and_then(|character| current_animation(&editor, character))
             .map(|animation| {
                 next_frame_elapsed(
                     editor.elapsed,
@@ -551,17 +570,27 @@ fn editor_input(
     if keys.just_pressed(KeyCode::KeyC) && !editor.characters.is_empty() {
         editor.character_index = (editor.character_index + 1) % editor.characters.len();
         editor.animation_index = 0;
+        editor.base_model_mode = true;
         editor.weapon_state_index = 0;
         editor.elapsed = 0.0;
+        editor.playing = false;
         editor.weapon = None;
     }
 
     let animation_count =
         current_character(&editor, &assets).map_or(0, |character| character.animations.len());
     if animation_count > 0 && keys.just_pressed(KeyCode::KeyA) {
-        editor.animation_index = (editor.animation_index + 1) % animation_count;
+        if editor.base_model_mode {
+            editor.base_model_mode = false;
+            editor.animation_index = 0;
+        } else if editor.animation_index + 1 < animation_count {
+            editor.animation_index += 1;
+        } else {
+            editor.base_model_mode = true;
+            editor.animation_index = 0;
+        }
         editor.elapsed = 0.0;
-        editor.playing = true;
+        editor.playing = !editor.base_model_mode;
     }
 
     let state_count = current_weapon(&editor, &assets).map_or(0, |weapon| weapon.states.len());
@@ -622,36 +651,46 @@ fn begin_joint_edit(
     else {
         return;
     };
-    let Some(animation) = character.animations.get_mut(editor.animation_index) else {
-        return;
-    };
-    let frame_index = current_frame_index(editor, animation);
-    let Some(frame) = animation.frames.get_mut(frame_index) else {
-        return;
-    };
-    if let Some(key) = frame.joints.iter_mut().find(|key| key.joint == joint_name) {
-        key.position.get_or_insert(base_position);
+    let (target, start_position) = if editor.base_model_mode {
+        (EditTarget::BaseModel, base_position)
     } else {
-        frame.joints.push(JointKey {
-            joint: joint_name.clone(),
-            position: Some(base_position),
-            angle_degrees: None,
-        });
-    }
-    let start_position = frame
-        .joints
-        .iter()
-        .find(|key| key.joint == joint_name)
-        .and_then(|key| key.position)
-        .unwrap_or(base_position);
+        let Some(animation) = character.animations.get_mut(editor.animation_index) else {
+            return;
+        };
+        let frame_index = current_frame_index(editor, animation);
+        let Some(frame) = animation.frames.get_mut(frame_index) else {
+            return;
+        };
+        if let Some(key) = frame.joints.iter_mut().find(|key| key.joint == joint_name) {
+            key.position.get_or_insert(base_position);
+        } else {
+            frame.joints.push(JointKey {
+                joint: joint_name.clone(),
+                position: Some(base_position),
+                angle_degrees: None,
+            });
+        }
+        let start_position = frame
+            .joints
+            .iter()
+            .find(|key| key.joint == joint_name)
+            .and_then(|key| key.position)
+            .unwrap_or(base_position);
+        (
+            EditTarget::Animation {
+                animation: editor.animation_index,
+                frame: frame_index,
+            },
+            start_position,
+        )
+    };
     editor.playing = false;
     editor.status = format!("Editing {joint_name}; press E to save");
     editor.joint_edit = Some(JointEdit {
         handle,
         asset_path,
         joint_name,
-        animation_index: editor.animation_index,
-        frame_index,
+        target,
         parent_world_angle,
         character_scale,
         start_position,
@@ -666,29 +705,15 @@ fn move_edited_joint(editor: &Editor, assets: &mut Assets<StudioAsset>, delta: V
     let Some(edit) = editor.joint_edit.as_ref() else {
         return;
     };
-    let Some(mut asset) = assets.get_mut(&edit.handle) else {
-        return;
-    };
-    let Some(character) = asset.character.as_mut() else {
-        return;
-    };
-    let Some(animation) = character.animations.get_mut(edit.animation_index) else {
-        return;
-    };
-    let Some(frame) = animation.frames.get_mut(edit.frame_index) else {
-        return;
-    };
-    let Some(key) = frame
-        .joints
-        .iter_mut()
-        .find(|key| key.joint == edit.joint_name)
-    else {
+    let Some(current) = joint_edit_position(edit, assets) else {
         return;
     };
     let local_delta = world_edit_delta(delta, edit.parent_world_angle, edit.character_scale);
-    let position = key.position.get_or_insert((0.0, 0.0));
-    position.0 += local_delta.x;
-    position.1 += local_delta.y;
+    set_edited_joint_position(
+        assets,
+        edit,
+        (current.0 + local_delta.x, current.1 + local_delta.y),
+    );
 }
 
 fn switch_to_keyboard_edit(editor: &mut Editor, assets: &mut Assets<StudioAsset>) {
@@ -711,21 +736,57 @@ fn set_edited_joint_position(
     let Some(mut asset) = assets.get_mut(&edit.handle) else {
         return;
     };
-    let Some(key) = asset
-        .character
-        .as_mut()
-        .and_then(|character| character.animations.get_mut(edit.animation_index))
-        .and_then(|animation| animation.frames.get_mut(edit.frame_index))
-        .and_then(|frame| {
-            frame
-                .joints
-                .iter_mut()
-                .find(|key| key.joint == edit.joint_name)
-        })
-    else {
+    let Some(character) = asset.character.as_mut() else {
         return;
     };
-    key.position = Some(position);
+    match edit.target {
+        EditTarget::BaseModel => {
+            if let Some(joint) = character
+                .joints
+                .iter_mut()
+                .find(|joint| joint.name == edit.joint_name)
+            {
+                joint.position = position;
+            }
+        }
+        EditTarget::Animation { animation, frame } => {
+            if let Some(key) = character
+                .animations
+                .get_mut(animation)
+                .and_then(|animation| animation.frames.get_mut(frame))
+                .and_then(|frame| {
+                    frame
+                        .joints
+                        .iter_mut()
+                        .find(|key| key.joint == edit.joint_name)
+                })
+            {
+                key.position = Some(position);
+            }
+        }
+    }
+}
+
+fn joint_edit_position(edit: &JointEdit, assets: &Assets<StudioAsset>) -> Option<(f32, f32)> {
+    let character = assets.get(&edit.handle)?.character.as_ref()?;
+    match edit.target {
+        EditTarget::BaseModel => character
+            .joints
+            .iter()
+            .find(|joint| joint.name == edit.joint_name)
+            .map(|joint| joint.position),
+        EditTarget::Animation { animation, frame } => {
+            character
+                .animations
+                .get(animation)?
+                .frames
+                .get(frame)?
+                .joints
+                .iter()
+                .find(|key| key.joint == edit.joint_name)?
+                .position
+        }
+    }
 }
 
 fn world_edit_delta(delta: Vec2, parent_world_angle: f32, character_scale: f32) -> Vec2 {
@@ -837,8 +898,8 @@ fn advance_animation(
     if !editor.playing {
         return;
     }
-    let Some(animation) =
-        current_character(&editor, &assets).and_then(|c| c.animations.get(editor.animation_index))
+    let Some(animation) = current_character(&editor, &assets)
+        .and_then(|character| current_animation(&editor, character))
     else {
         return;
     };
@@ -913,9 +974,7 @@ fn draw_editor(
     let Some(character) = current_character(&editor, &assets) else {
         return;
     };
-    let Some(animation) = character.animations.get(editor.animation_index) else {
-        return;
-    };
+    let animation = current_animation(&editor, character);
     if let Some(mut material) = materials.get_mut(&preview_assets.skin) {
         material.color = character.skin_color.color();
     }
@@ -923,20 +982,28 @@ fn draw_editor(
         material.color = character.team_color.color();
     }
 
-    let frame_count = animation.frames.len().max(1);
-    let frame_position = editor.elapsed / animation.seconds_per_frame.max(0.001);
-    let frame_a = (frame_position.floor() as usize).min(frame_count - 1);
-    let frame_b = if editor.looping {
-        (frame_a + 1) % frame_count
+    let (frame_a, frame_b, blend) = if let Some(animation) = animation {
+        let frame_count = animation.frames.len().max(1);
+        let frame_position = editor.elapsed / animation.seconds_per_frame.max(0.001);
+        let frame_a = (frame_position.floor() as usize).min(frame_count - 1);
+        let frame_b = if editor.looping {
+            (frame_a + 1) % frame_count
+        } else {
+            (frame_a + 1).min(frame_count - 1)
+        };
+        (
+            animation.frames.get(frame_a),
+            animation.frames.get(frame_b),
+            frame_position.fract(),
+        )
     } else {
-        (frame_a + 1).min(frame_count - 1)
+        (None, None, 0.0)
     };
-    let blend = frame_position.fract();
     let mut poses = HashMap::new();
 
     for joint in &character.joints {
-        let (offset_a, angle_a) = keyed_pose(joint, animation.frames.get(frame_a));
-        let (offset_b, angle_b) = keyed_pose(joint, animation.frames.get(frame_b));
+        let (offset_a, angle_a) = keyed_pose(joint, frame_a);
+        let (offset_b, angle_b) = keyed_pose(joint, frame_b);
         let local_offset = offset_a.lerp(offset_b, blend) * character.scale;
         let local_angle = angle_a.to_radians()
             + shortest_angle(angle_a.to_radians(), angle_b.to_radians()) * blend;
@@ -1544,19 +1611,7 @@ fn shortest_angle(from: f32, to: f32) -> f32 {
 }
 
 fn edited_joint_position(editor: &Editor, assets: &Assets<StudioAsset>) -> Option<(f32, f32)> {
-    let edit = editor.joint_edit.as_ref()?;
-    assets
-        .get(&edit.handle)?
-        .character
-        .as_ref()?
-        .animations
-        .get(edit.animation_index)?
-        .frames
-        .get(edit.frame_index)?
-        .joints
-        .iter()
-        .find(|key| key.joint == edit.joint_name)?
-        .position
+    joint_edit_position(editor.joint_edit.as_ref()?, assets)
 }
 
 fn update_toolbar(
@@ -1568,7 +1623,7 @@ fn update_toolbar(
         return;
     };
     let character = current_character(&editor, &assets);
-    let animation = character.and_then(|c| c.animations.get(editor.animation_index));
+    let animation = character.and_then(|character| current_animation(&editor, character));
     let weapon = current_weapon(&editor, &assets);
     let weapon_state = weapon.and_then(|w| w.states.get(editor.weapon_state_index));
     let edit_label = match (
@@ -1593,10 +1648,18 @@ fn update_toolbar(
          VIEW  {}   |   JOINT  {}   |   EDITING  {}   |   WEAPON  {}   |   STATE  {}   |   PLAYBACK  {} / {}   |   GRID  {}   |   CURSOR  ({:.1}, {:.1})\n\
          [E] edit/save   [Mouse] move joint   [Arrows] reset + move 5   [Shift+Arrows] reset + move 0.1   [Esc] cancel   [V] drawn/rig   [C] character   [A] animation   [W] weapon state   [Space] play/pause   [F] next frame   [L] loop/once   [R] restart   [G] grid   |   {} (reload #{})",
         character.map_or("--", |c| c.name.as_str()),
-        animation.map_or("--", |a| a.name.as_str()),
+        if editor.base_model_mode {
+            "base model"
+        } else {
+            animation.map_or("--", |a| a.name.as_str())
+        },
         frame + 1,
-        animation.map_or(0, |a| a.frames.len()),
-        editor.elapsed,
+        animation.map_or(1, |a| a.frames.len()),
+        if editor.base_model_mode {
+            0.0
+        } else {
+            editor.elapsed
+        },
         animation.map_or(0.0, |a| a.seconds_per_frame),
         editor.render_mode.label(),
         editor.hovered_joint.as_deref().unwrap_or("--"),
@@ -1718,5 +1781,56 @@ mod tests {
         assert!((local.x + 5.0).abs() < 0.001);
         assert!(local.y.abs() < 0.001);
         assert_eq!(world_edit_delta(Vec2::Y * 5.0, 0.0, 2.0), Vec2::Y * 2.5);
+    }
+
+    #[test]
+    fn base_and_animation_edits_write_to_different_targets() {
+        let asset = parse(include_str!("../assets/character_editor/archer.ron"));
+        let original = asset.clone();
+        let mut assets = Assets::<StudioAsset>::default();
+        let handle = assets.add(asset);
+        let make_edit = |target| JointEdit {
+            handle: handle.clone(),
+            asset_path: "character_editor/archer.ron".into(),
+            joint_name: "chest".into(),
+            target,
+            parent_world_angle: 0.0,
+            character_scale: 1.0,
+            start_position: (0.0, 0.0),
+            anchor_world: Vec2::ZERO,
+            mouse_dragging: false,
+            original: original.clone(),
+        };
+
+        set_edited_joint_position(&mut assets, &make_edit(EditTarget::BaseModel), (11.0, 12.0));
+        set_edited_joint_position(
+            &mut assets,
+            &make_edit(EditTarget::Animation {
+                animation: 0,
+                frame: 0,
+            }),
+            (21.0, 22.0),
+        );
+
+        let character = assets
+            .get(&handle)
+            .and_then(|asset| asset.character.as_ref())
+            .expect("character payload");
+        assert_eq!(
+            character
+                .joints
+                .iter()
+                .find(|joint| joint.name == "chest")
+                .map(|joint| joint.position),
+            Some((11.0, 12.0))
+        );
+        assert_eq!(
+            character.animations[0].frames[0]
+                .joints
+                .iter()
+                .find(|key| key.joint == "chest")
+                .and_then(|key| key.position),
+            Some((21.0, 22.0))
+        );
     }
 }

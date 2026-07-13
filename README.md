@@ -131,3 +131,7 @@ to keyboard-only movement. Press <kbd>E</kbd> again to serialize the character
 back to its RON file, or <kbd>Esc</kbd> to restore the pre-edit asset and exit.
 Playback, frame stepping, restart, and character/animation/weapon-state changes
 also cancel the pending edit before performing their normal action.
+
+The <kbd>A</kbd> cycle includes a non-playing **base model** entry. Edits made in
+that entry update the joint's base `position`; edits made while an animation is
+selected update only its current frame key.
