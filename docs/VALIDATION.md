@@ -5,10 +5,12 @@ This is a browser-first release candidate on `codex/3d-rewrite`, based on verifi
 ## Automated checks
 
 - TypeScript strict checking, ESLint and Prettier.
-- 29 headless tests: economy symmetry over full miner trajectories, gathering/carrying/return, training reservation and cap rules, all orders, retreat around home statues, interrupted miners returning to deposits, backpedaling archers facing their targets, AI recruitment/replacement, direct-control ownership, facing-based swords, manual ballistic bows, cooldown preservation, frozen attack/training parameters, swept first-impact filtering, simultaneous draw, sandbox continuation, cleanup and a victory using unchanged balance.
-- Browser suite: 16 applicable scenarios pass across desktop 1280 × 720 and emulated landscape touch 844 × 390; two cases are intentionally skipped on the inapplicable device project. Scenarios include both possession classes, complete victory/defeat, all orders, restart/menu, five repeated resets, stable geometry/texture counts, loading failure/retry, hot reload rejection/recovery, pointer-lock loss, simultaneous touch movement/aim/attack, portrait pause, 100-unit stress and static-menu render idling.
+- 48 headless tests: economy symmetry over full miner trajectories, gathering/carrying/return, training reservation and cap rules, all orders, retreat around home statues, interrupted miners returning to deposits, backpedaling archers facing their targets, AI recruitment/replacement, direct-control ownership, facing-based swords, manual ballistic bows, cooldown preservation, frozen attack/training parameters, swept first-impact filtering, simultaneous draw, sandbox continuation, cleanup and a victory using unchanged balance.
+- Browser suite: 22 applicable scenarios pass across desktop 1280 × 720 and emulated landscape touch 844 × 390; two cases are intentionally skipped on the inapplicable device project. Scenarios include both possession classes, complete victory/defeat, all orders, restart/menu, five repeated resets, stable geometry/texture counts, loading failure/retry, hot reload rejection/recovery, pointer-lock loss, simultaneous touch movement/aim/attack, portrait pause, 100-unit stress and static-menu render idling.
 - Nine optimized GLBs pass Khronos validation with zero errors. Required materials, clips, joints and arena anchors survive optimization. Model details are recorded in `asset-validation.json`.
-- The complete production site is approximately 5.9 MiB raw, under the 12 MiB budget. The gzip total is an estimate, not a measurement of GitHub Pages transfer encoding.
+- The complete production site is approximately 6.02 MiB raw, under the 12 MiB budget. The gzip total is an estimate, not a measurement of GitHub Pages transfer encoding.
+
+The subsequent [sandbox and animation pass](BEHAVIOR_QA.md) adds mirrored archer-defense, siege reinforcement, backward interception, mixed-army, pursuit/recall, retreat/regroup, crowding, and exported bow-grip tests.
 
 ## Evidence
 
@@ -16,6 +18,7 @@ This is a browser-first release candidate on `codex/3d-rewrite`, based on verifi
 
 - `desktop-commander.png`, `desktop-swordsman-pov.png`, `desktop-archer-pov.png`.
 - `mobile-commander.png`, `mobile-swordsman-pov.png`, `mobile-archer-pov.png`, `mobile-touch-combat.png`.
+- `animation-poses.png` and the desktop/mobile `archer-defense-blue.png` / `archer-defense-red.png` captures document the behavior and animation pass.
 - `performance-desktop.json` and `performance-touch.json` contain frame-interval samples and simulation/rendering object counts.
 
 Performance samples use the local Mac's Chrome in headless mode, up to 180 rendered frame intervals per scenario, bounded to a three-second window. The endurance scenario gives combat units additional health solely in the test to hold population while fighting; movement, collision, attack timings and rendering remain unchanged. Timing is not a guarantee for every GPU/browser. The separate simulation stress scenario uses ordinary unit health.
@@ -37,7 +40,7 @@ npm run test:browser
 
 GitHub Actions performs these gates for the PR and master. After merge to `master`, the same workflow publishes the Vite `dist/` artifact to Pages. This draft PR does not replace the currently published game until merged. Blender is required only for authoring, not for running the game or validating committed runtime assets.
 
-Recorded combat-centered samples averaged 16.67 ms per frame (approximately 60 fps) for both 24 and 100 units on local headless Chrome. Desktop 95th-percentile intervals were 16.8 ms; landscape emulation was 16.8/16.7 ms. These are short, refresh-limited samples, not a long-duration device benchmark. `desktop-commander-combat.png` and `mobile-commander-combat.png` show the measured scene, paused immediately after sampling.
+Recorded combat-centered samples averaged 16.67 ms per frame (approximately 60 fps) for both 24 and 100 units on local headless Chrome. Desktop 95th-percentile intervals were 16.7 ms; landscape emulation was 16.7/16.8 ms. These are short, refresh-limited samples, not a long-duration device benchmark. `desktop-commander-combat.png` and `mobile-commander-combat.png` show the measured scene, paused immediately after sampling.
 
 CI browser tests allow longer action budgets than local tests. Timing samples stop after three seconds even on slow renderers; a fixed frame-count wait must not turn low frame rate into a hung test. The first Linux run reached the final menu step but exhausted its old 45-second test budget, and its fixed-frame timing probes timed out. The CI-specific budgets and bounded timing probe address those failures.
 

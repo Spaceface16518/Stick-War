@@ -56,10 +56,11 @@ test("sandbox placement, orders, possession, pause, restart and menu", async ({
   await page.keyboard.press("Tab");
   await expect(page.locator("#pov")).toBeVisible();
   const id = (await state(page)).controlledId;
+  const startX = (await state(page)).units.find((u) => u.id === id)!.x;
   await page.keyboard.down("KeyW");
   await expect
     .poll(async () => (await state(page)).units.find((u) => u.id === id)!.x)
-    .toBeGreaterThan(-25.9);
+    .toBeGreaterThan(startX + 0.4);
   await page.keyboard.up("KeyW");
   await page.keyboard.press("Space");
   await page.screenshot({ path: info.outputPath("swordsman-pov.png") });
@@ -459,4 +460,92 @@ test("rendered battle performance sample and static-menu idle", async ({
   expect(await page.evaluate(() => window.__stickWar.diagnostics())).toEqual(
     before,
   );
+});
+
+for (const defender of ["blue", "red"] as const) {
+  test(`three archers return fire when ${defender} defends`, async ({
+    page,
+  }, info) => {
+    await open(page);
+    for (const team of ["blue", "red"] as const) {
+      await page.locator(`#team-${team}`).click();
+      for (let n = 0; n < 3; n++) await page.locator("#train-archer").click();
+      await page
+        .locator(`#order-${team === defender ? "defend" : "attack"}`)
+        .click();
+    }
+    const fired = await page.evaluate(() => {
+      const shots = new Set<string>();
+      window.__stickWar.command({ type: "pause", paused: false });
+      for (let n = 0; n < 600 && shots.size < 2; n++) {
+        window.__stickWar.advance(0.1);
+        for (const p of window.__stickWar.snapshot()!.projectiles)
+          shots.add(p.team);
+      }
+      window.__stickWar.command({ type: "pause", paused: true });
+      return [...shots];
+    });
+    expect(fired.sort()).toEqual(["blue", "red"]);
+    await expect(
+      page.getByText("SIMULATION PAUSED", { exact: true }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: info.outputPath(`archer-defense-${defender}.png`),
+    });
+  });
+}
+
+test("exported bows draw along the aiming line and keep the grip in the palm", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open sandbox ◇" }).waitFor();
+  const poses = await page.evaluate(async () => {
+    const assetsPath = "/src/presentation/assets.ts",
+      threePath = "/node_modules/.vite/deps/three.js";
+    const { AssetStore } = (await import(
+      assetsPath
+    )) as typeof import("../src/presentation/assets");
+    const T = (await import(threePath)) as typeof import("three");
+    const store = new AssetStore();
+    await store.load(() => {});
+    const results: {
+      asset: string;
+      gripGap: number;
+      draw: number;
+      verticalError: number;
+      forward: number;
+    }[] = [];
+    for (const asset of ["archer", "archer_lod", "fp_archer"]) {
+      const { root, clips } = store.instantiate(asset)!;
+      const mixer = new T.AnimationMixer(root),
+        clip = clips.find((c) => c.name === "bow_attack")!;
+      mixer.clipAction(clip).play();
+      for (const phase of [0.24, 0.3, 0.34]) {
+        mixer.setTime(phase * clip.duration);
+        root.updateMatrixWorld(true);
+        const position = (name: string) =>
+          root.getObjectByName(name)!.getWorldPosition(new T.Vector3());
+        const grip = position("bow_socket"),
+          hand = position("hand_l"),
+          nock = position("string_nock");
+        results.push({
+          asset,
+          gripGap: grip.distanceTo(hand),
+          draw: grip.distanceTo(nock),
+          verticalError: Math.abs(grip.y - nock.y),
+          forward: (grip.z - nock.z) * (asset.startsWith("fp_") ? -1 : 1),
+        });
+      }
+      mixer.stopAllAction();
+      mixer.uncacheRoot(root);
+    }
+    return results;
+  });
+  for (const pose of poses) {
+    expect(pose.gripGap, `${pose.asset}: grip`).toBeLessThan(0.04);
+    expect(pose.draw, `${pose.asset}: drawn string`).toBeGreaterThan(0.25);
+    expect(pose.verticalError, `${pose.asset}: level arrow`).toBeLessThan(0.08);
+    expect(pose.forward, `${pose.asset}: forward aim`).toBeGreaterThan(0.25);
+  }
 });

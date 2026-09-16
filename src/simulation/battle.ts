@@ -86,9 +86,14 @@ export class BattleSimulation {
         w.teams[command.team].order = command.order;
         if (command.order === "retreat")
           for (const u of w.units.values())
-            if (u.team === command.team && u.kind === "miner") {
-              u.minerState = u.carried > 0 ? "returning" : "outbound";
-              u.miningRemaining = w.config.units.miner.miningSeconds;
+            if (u.team === command.team && u.id !== w.controlledId) {
+              u.attack = null;
+              u.attackMotion = null;
+              u.target = null;
+              if (u.kind === "miner") {
+                u.minerState = u.carried > 0 ? "returning" : "outbound";
+                u.miningRemaining = w.config.units.miner.miningSeconds;
+              }
             }
         return { ok: true };
       case "possess": {
@@ -102,18 +107,25 @@ export class BattleSimulation {
         if (w.controlledId === u.id) return { ok: true };
         if (w.controlledId !== null) {
           const old = w.units.get(w.controlledId);
-          if (old) old.attack = null;
+          if (old) {
+            old.attack = null;
+            old.attackMotion = null;
+          }
         }
         w.controlledId = u.id;
         u.target = null;
         u.attack = null;
+        u.attackMotion = null;
         w.input = { ...neutralInput, yaw: u.yaw };
         return { ok: true };
       }
       case "release": {
         const u =
           w.controlledId === null ? undefined : w.units.get(w.controlledId);
-        if (u) u.attack = null;
+        if (u) {
+          u.attack = null;
+          u.attackMotion = null;
+        }
         w.controlledId = null;
         w.input = { ...neutralInput };
         return { ok: true };

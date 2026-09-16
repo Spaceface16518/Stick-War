@@ -37,7 +37,7 @@ Playwright uses installed Chrome locally. In CI, install its Chromium browser wi
 | Release | Escape | Commander button |
 | Commander camera | Arrows, horizontal scroll, wheel zoom | Swipe / pinch |
 
-Both teams start with 150 gold, one miner and a 500-health statue. Miners carry 25 gold home; passive income adds 5 gold every 2 seconds. Training reserves gold and population immediately, with one slot per class. Defend holds the home formation; retreat recalls miners with their carried gold. Destroy the opposing statue to win.
+Both teams start with 150 gold, one miner and a 500-health statue. Miners carry 25 gold home; passive income adds 5 gold every 2 seconds. Training reserves gold and population immediately, with one slot per class. Defend holds the home formation and intercepts threats throughout your half of the field, including ranged attackers and troops behind the statue. Reinforcements enter through rear lanes beside the statue. Retreat cancels automatic attacks and recalls miners with their carried gold. Destroy the opposing statue to win.
 
 Sandbox starts paused with free, instant training. Choose either team, set orders, change the cap, possess either army, and enable costs or training timers. Existing units and reservations survive cap reductions. Statue destruction does not end sandbox.
 

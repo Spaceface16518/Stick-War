@@ -113,6 +113,22 @@ for (const asset of manifest.assets) {
         );
       }
   }
+  if (asset.id.startsWith("fp_")) {
+    for (const name of [
+      "idle",
+      asset.id === "fp_archer" ? "bow_attack" : "melee_attack",
+    ])
+      assert.ok(clips.includes(name), `${asset.id}: missing ${name}`);
+    for (const name of [
+      "hand_l",
+      "hand_r",
+      "weapon_socket",
+      "bow_socket",
+      "string_nock",
+      "arrow_socket",
+    ])
+      assert.ok(joints.includes(name), `${asset.id}: missing ${name}`);
+  }
   const entry = {
     id: asset.id,
     bytes: bytes.length,

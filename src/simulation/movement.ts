@@ -3,6 +3,7 @@ import {
   direction,
   distance,
   opponent,
+  teams,
   type Point,
   type UnitState,
 } from "./types";
@@ -62,15 +63,16 @@ function moveToward(
       statue.health <= 0 ||
       !dir ||
       (statue.x - u.x) * dir < -1.5 ||
-      (destination.x - statue.x) * dir < 1.5 ||
-      Math.abs(destination.z - statue.z) >= 1.5
+      (destination.x - statue.x) * dir <= 0
     )
       continue;
     const side = Math.sign(u.z - statue.z) || (u.id % 2 ? 1 : -1);
     const z = statue.z + side * 1.7;
+    // Reach the near corner before crossing; a diagonal to the far corner
+    // clips the box and can strand reinforcements behind their own statue.
     destination =
-      Math.abs(u.x - statue.x) < 1.55 && Math.abs(u.z - statue.z) < 1.55
-        ? { x: u.x, z }
+      (statue.x - u.x) * dir > 1.6 && Math.abs(u.z - statue.z) < 1.65
+        ? { x: statue.x - dir * 1.6, z }
         : { x: statue.x + dir * 1.65, z };
     break;
   }
@@ -142,6 +144,38 @@ function moveMiner(w: BattleWorld, u: UnitState, dt: number): void {
   }
 }
 export function acquireTargets(w: BattleWorld): void {
+  const units = [...w.units.values()];
+  const objects = [...units, ...w.statues.values()];
+  // Compute the shared base alarm once per team, before assigning this tick's
+  // targets. Neither iteration order nor distance from a new recruit hides it.
+  const defenses = new Map(
+    teams.map((team) => {
+      const dir = direction(team);
+      const front =
+        w.arena.teams[team].mine.x +
+        dir * (w.config.ai.defenseOffset + w.config.ai.defenseRadius);
+      const home = objects.filter(
+        (a) => a.team === team && a.health > 0 && (a.x - front) * dir <= 0,
+      );
+      const threats = new Set<number>(),
+        statueThreats = new Set<number>();
+      for (const enemy of units) {
+        if (enemy.team === team || enemy.kind === "miner") continue;
+        const intent = enemy.attack?.target ?? enemy.target;
+        for (const ally of home) {
+          if (
+            intent === ally.id ||
+            distance(enemy, ally) <=
+              w.config.units[enemy.kind].range + ("kind" in ally ? 0.3 : 1)
+          ) {
+            threats.add(enemy.id);
+            if (!("kind" in ally)) statueThreats.add(enemy.id);
+          }
+        }
+      }
+      return [team, { front, threats, statueThreats }] as const;
+    }),
+  );
   for (const u of w.units.values()) {
     if (
       u.kind === "miner" ||
@@ -152,19 +186,47 @@ export function acquireTargets(w: BattleWorld): void {
       continue;
     }
     const def = w.config.units[u.kind];
-    const defense =
-      w.arena.teams[u.team].mine.x +
-      direction(u.team) * w.config.ai.defenseOffset;
+    const dir = direction(u.team);
+    const { front, threats, statueThreats } = defenses.get(u.team)!;
+    const defending = w.teams[u.team].order === "defend";
     const candidates = [...w.units.values(), ...w.statues.values()].filter(
-      (t) =>
-        t.team !== u.team &&
-        t.health > 0 &&
-        distance(u, t) <= def.activationRange &&
-        (w.teams[u.team].order !== "defend" ||
-          Math.abs(t.x - defense) <= w.config.ai.defenseRadius),
+      (t) => {
+        if (t.team === u.team || t.health <= 0) return false;
+        if (!defending) return distance(u, t) <= def.activationRange;
+        // Defend the entire home corridor, including behind the statue. A
+        // ranged attacker threatening that corridor also warrants a response.
+        // Defend never turns into an assault on the opposing statue.
+        if (!("kind" in t)) return false;
+        const intrusion = (t.x - front) * dir <= 0;
+        const retaliation = distance(u, t) <= def.range + 0.3;
+        const midfield =
+          (w.arena.teams[u.team].statue.x +
+            w.arena.teams[opponent(u.team)].statue.x) /
+          2;
+        if ((u.x - midfield) * dir > 0.05 && (t.x - midfield) * dir > 0)
+          return false;
+        const pursuit = (t.x - midfield) * dir <= def.range + 0.3;
+        const engaged =
+          t.id === u.target && distance(u, t) <= def.activationRange;
+        return (
+          pursuit && (intrusion || retaliation || threats.has(t.id) || engaged)
+        );
+      },
     );
-    const priority = (t: (typeof candidates)[number]) =>
-      "target" in t && t.target === u.id ? 0 : t.id === u.target ? 1 : 2;
+    const priority = (t: (typeof candidates)[number]) => {
+      if (defending && statueThreats.has(t.id)) return 0;
+      if ("kind" in t && t.kind !== "miner") {
+        if (
+          distance(u, t) <
+          (u.kind === "archer" && t.kind === "swordsman"
+            ? def.range * w.config.ai.archerBackpedal
+            : def.range + 0.3)
+        )
+          return 1;
+        return t.id === u.target ? 2 : 3;
+      }
+      return "kind" in t ? 4 : 5;
+    };
     candidates.sort(
       (a, b) =>
         priority(a) - priority(b) ||
@@ -205,29 +267,52 @@ export function tickMovement(w: BattleWorld, dt: number): void {
         const reach = def.range + ("kind" in target ? 0.3 : 1.0);
         if (
           u.kind === "archer" &&
+          "kind" in target &&
+          target.kind === "swordsman" &&
           d < def.range * w.config.ai.archerBackpedal
         ) {
           const scale = 1 / Math.max(d, 0.01);
-          moveToward(
-            w,
-            u,
-            {
-              x: u.x + (u.x - target.x) * scale * 2,
-              z: u.z + (u.z - target.z) * scale,
-            },
-            dt,
-          );
+          const retreat = {
+            x: u.x + (u.x - target.x) * scale * 2,
+            z: u.z + (u.z - target.z) * scale,
+          };
+          if (order === "defend") {
+            const dir = direction(u.team);
+            const midfield =
+              (w.arena.teams[u.team].statue.x +
+                w.arena.teams[opponent(u.team)].statue.x) /
+              2;
+            retreat.x = dir * Math.min(retreat.x * dir, midfield * dir);
+          }
+          moveToward(w, u, retreat, dt);
           u.yaw = Math.atan2(target.x - u.x, target.z - u.z);
         } else if (
           d >
-          (u.kind === "archer"
+          (u.kind === "archer" && order !== "defend"
             ? def.range * w.config.ai.archerPreferred
             : reach * 0.92)
-        )
-          moveToward(w, u, target, dt);
+        ) {
+          let destination: Point = target;
+          if (order === "defend") {
+            const dir = direction(u.team);
+            const midfield =
+              (w.arena.teams[u.team].statue.x +
+                w.arena.teams[opponent(u.team)].statue.x) /
+              2;
+            destination = {
+              x: dir * Math.min(target.x * dir, midfield * dir),
+              z: target.z,
+            };
+          }
+          moveToward(w, u, destination, dt);
+          u.yaw = Math.atan2(target.x - u.x, target.z - u.z);
+        }
       } else if (order === "attack")
         moveToward(w, u, w.arena.teams[opponent(u.team)].statue, dt);
-      else moveToward(w, u, formationPosition(w, u), dt);
+      else {
+        moveToward(w, u, formationPosition(w, u), dt);
+        if (u.phase === "idle") u.yaw = (direction(u.team) * Math.PI) / 2;
+      }
     }
     const smoothing = w.config.arrow.velocitySmoothing;
     u.velocity = {

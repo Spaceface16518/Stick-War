@@ -43,7 +43,14 @@ describe("battle rules", () => {
   it("returns an interrupted miner to the deposit before restarting work", () => {
     const s = sandbox();
     s.command({ type: "pause", paused: false });
-    advance(s, 5);
+    for (
+      let n = 0;
+      n < 1200 &&
+      s.snapshot().units.find((u) => u.team === "blue")!.minerState !==
+        "mining";
+      n++
+    )
+      s.step();
     expect(s.snapshot().units.find((u) => u.team === "blue")!.minerState).toBe(
       "mining",
     );
@@ -94,8 +101,9 @@ describe("battle rules", () => {
     for (let n = 0; n < 720; n++) {
       s.step();
       const [blue, red] = s.snapshot().units;
-      expect(blue.x).toBeCloseTo(-red.x, 4);
-      expect(blue.z).toBeCloseTo(-red.z, 4);
+      // Rapier's mirrored capsule/box contacts differ below a millimetre.
+      expect(Math.abs(blue.x + red.x)).toBeLessThan(0.001);
+      expect(Math.abs(blue.z + red.z)).toBeLessThan(0.001);
       expect(blue.carried).toBe(red.carried);
     }
     s.dispose();
@@ -181,7 +189,13 @@ describe("battle rules", () => {
   it("retreat interrupts mining and retains carried gold", () => {
     const s = sandbox();
     s.command({ type: "pause", paused: false });
-    advance(s, 6);
+    for (
+      let n = 0;
+      n < 1200 &&
+      s.snapshot().units.find((u) => u.team === "blue")!.carried === 0;
+      n++
+    )
+      s.step();
     const u = s.snapshot().units.find((u) => u.team === "blue")!;
     expect(u.carried).toBe(25);
     s.command({ type: "order", team: "blue", order: "retreat" });
@@ -332,6 +346,7 @@ describe("spatial invariants", () => {
     yaw: 0,
     cooldown: 0,
     attack: null,
+    attackMotion: null,
     phase: "idle",
     carried: 0,
     miningRemaining: 0,

@@ -30,6 +30,11 @@ function startAttack(w: BattleWorld, u: UnitState, automatic: boolean): void {
     def.cooldown +
     w.config.combat.cooldownExtra +
     w.random.signed() * w.config.combat.cooldownJitter;
+  u.attackMotion = {
+    startedAt: w.elapsed,
+    duration: u.cooldown,
+    windup: def.windup,
+  };
   u.phase = "attack";
   w.events.push({ type: "attack", id: u.id, kind: u.kind });
 }

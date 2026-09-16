@@ -8,53 +8,53 @@
     {
       "requestedUnits": 24,
       "scenario": "Sustained combat centered in view; increased health prevents population decay",
-      "meanMs": 16.66611111111111,
-      "p95Ms": 16.799999999999955,
+      "meanMs": 16.665555555555557,
+      "p95Ms": 16.700000000000273,
       "samples": 180,
       "diagnostics": {
         "simulation": {
           "units": 24,
-          "projectiles": 4,
+          "projectiles": 0,
           "colliders": 31,
-          "tick": 786
+          "tick": 785
         },
         "rendering": {
           "actors": 24,
-          "arrows": 4,
+          "arrows": 0,
           "corpses": 0,
           "geometries": 9,
           "textures": 48,
-          "drawCalls": 61,
-          "renderedFrames": 187
+          "drawCalls": 56,
+          "renderedFrames": 186
         },
-        "frameCount": 182,
-        "averageFrameMs": 17.123626373626372
+        "frameCount": 181,
+        "averageFrameMs": 17.125966850828732
       }
     },
     {
       "requestedUnits": 100,
       "scenario": "Sustained combat centered in view; increased health prevents population decay",
-      "meanMs": 16.665555555555557,
-      "p95Ms": 16.700000000000728,
+      "meanMs": 16.66611111111111,
+      "p95Ms": 16.800000000000182,
       "samples": 180,
       "diagnostics": {
         "simulation": {
           "units": 100,
-          "projectiles": 12,
+          "projectiles": 13,
           "colliders": 107,
-          "tick": 1573
+          "tick": 1572
         },
         "rendering": {
           "actors": 100,
-          "arrows": 12,
+          "arrows": 13,
           "corpses": 0,
           "geometries": 9,
-          "textures": 183,
-          "drawCalls": 211,
-          "renderedFrames": 372
+          "textures": 187,
+          "drawCalls": 217,
+          "renderedFrames": 371
         },
-        "frameCount": 365,
-        "averageFrameMs": 17.122465753424656
+        "frameCount": 364,
+        "averageFrameMs": 17.123626373626372
       }
     }
   ],

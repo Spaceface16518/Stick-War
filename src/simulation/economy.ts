@@ -21,12 +21,14 @@ export function spawnUnit(w: BattleWorld, team: Team, kind: UnitKind): number {
   const f = w.config.formation;
   let x = anchor.x,
     z = anchor.z;
-  for (let slot = 0; slot <= w.units.size + f.columns; slot++) {
+  // Start at the rear gate, then fill forward around (never inside) statues.
+  const rows = Math.ceil((w.arena.halfLength * 2) / 0.85);
+  for (let slot = 0; slot < rows * f.columns; slot++) {
+    const column = slot % f.columns;
+    const lane =
+      (column % 2 ? 1 : -1) * (1.65 + Math.floor(column / 2) * f.spacing);
     z = clamp(
-      anchor.z +
-        direction(team) *
-          ((slot % f.columns) - (f.columns - 1) / 2) *
-          f.spacing,
+      anchor.z + direction(team) * lane,
       -w.arena.halfWidth + 0.4,
       w.arena.halfWidth - 0.4,
     );
@@ -35,7 +37,13 @@ export function spawnUnit(w: BattleWorld, team: Team, kind: UnitKind): number {
       -w.arena.halfLength + 0.4,
       w.arena.halfLength - 0.4,
     );
-    if (![...w.units.values()].some((u) => Math.hypot(u.x - x, u.z - z) < 0.75))
+    const blocked = [...w.statues.values()].some(
+      (s) => s.health > 0 && Math.abs(s.x - x) < 1.4 && Math.abs(s.z - z) < 1.4,
+    );
+    if (
+      !blocked &&
+      ![...w.units.values()].some((u) => Math.hypot(u.x - x, u.z - z) < 0.75)
+    )
       break;
   }
   w.units.set(id, {
@@ -50,6 +58,7 @@ export function spawnUnit(w: BattleWorld, team: Team, kind: UnitKind): number {
     yaw: (direction(team) * Math.PI) / 2,
     cooldown: 0,
     attack: null,
+    attackMotion: null,
     phase: "idle",
     carried: 0,
     miningRemaining: def.miningSeconds,

@@ -4,47 +4,47 @@
     {
       "id": "archer",
       "file": "archer.glb",
-      "bytes": 329596
+      "bytes": 351592
     },
     {
       "id": "archer_lod",
       "file": "archer_lod.glb",
-      "bytes": 276556
+      "bytes": 297896
     },
     {
       "id": "arena",
       "file": "arena.glb",
-      "bytes": 378080
+      "bytes": 377084
     },
     {
       "id": "fp_archer",
       "file": "fp_archer.glb",
-      "bytes": 156424
+      "bytes": 179880
     },
     {
       "id": "fp_swordsman",
       "file": "fp_swordsman.glb",
-      "bytes": 151832
+      "bytes": 174448
     },
     {
       "id": "miner",
       "file": "miner.glb",
-      "bytes": 320188
+      "bytes": 335280
     },
     {
       "id": "miner_lod",
       "file": "miner_lod.glb",
-      "bytes": 271444
+      "bytes": 286652
     },
     {
       "id": "swordsman",
       "file": "swordsman.glb",
-      "bytes": 324368
+      "bytes": 345692
     },
     {
       "id": "swordsman_lod",
       "file": "swordsman_lod.glb",
-      "bytes": 273976
+      "bytes": 295376
     }
   ]
 }

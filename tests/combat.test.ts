@@ -57,6 +57,68 @@ function battle(w: BattleWorld, frames: number) {
   }
 }
 describe("combat resolution", () => {
+  it.each(["blue", "red"] as const)(
+    "%s defenders turn back to protect the statue beyond their personal activation range",
+    (team) => {
+      const w = world();
+      const sign = team === "blue" ? 1 : -1,
+        enemy = team === "blue" ? "red" : "blue";
+      w.teams[team].order = "defend";
+      const defender = soldier(w, team, "swordsman", -17.4 * sign);
+      const attacker = soldier(w, enemy, "swordsman", -26.5 * sign);
+      w.statues.set(1, {
+        id: 1,
+        team,
+        x: -28 * sign,
+        z: 0,
+        health: 100,
+        maxHealth: 500,
+      });
+      attacker.target = 1;
+      sync(w);
+      acquireTargets(w);
+      expect(defender.target).toBe(attacker.id);
+      tickMovement(w, 1 / 60);
+      expect(defender.x * sign).toBeLessThan(-17.4);
+      w.spatial.dispose();
+    },
+  );
+  it("defenders drop a fleeing target beyond their half and return to formation", () => {
+    const w = world();
+    w.teams.blue.order = "defend";
+    const defender = soldier(w, "blue", "swordsman", -0.2);
+    const enemy = soldier(w, "red", "archer", 3);
+    defender.target = enemy.id;
+    sync(w);
+    acquireTargets(w);
+    tickMovement(w, 1 / 60);
+    expect(defender.target).toBeNull();
+    expect(defender.x).toBeLessThan(-0.2);
+    w.spatial.dispose();
+  });
+  it("defend recalls an archer from the enemy half instead of continuing its assault", () => {
+    const w = world();
+    w.teams.blue.order = "defend";
+    const defender = soldier(w, "blue", "archer", 5);
+    const enemy = soldier(w, "red", "archer", 12);
+    defender.target = enemy.id;
+    sync(w);
+    acquireTargets(w);
+    tickMovement(w, 1 / 60);
+    expect(defender.target).toBeNull();
+    expect(defender.x).toBeLessThan(5);
+    w.spatial.dispose();
+  });
+  it("archers react to nearby melee pressure instead of keeping a distant ranged target", () => {
+    const w = world();
+    const archer = soldier(w, "blue", "archer", 0);
+    const distant = soldier(w, "red", "archer", 12);
+    const sword = soldier(w, "red", "swordsman", 3);
+    archer.target = distant.id;
+    acquireTargets(w);
+    expect(archer.target).toBe(sword.id);
+    w.spatial.dispose();
+  });
   it("keeps a backpedaling archer facing its target", () => {
     const w = world();
     w.mode = "sandbox";

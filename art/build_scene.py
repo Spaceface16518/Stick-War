@@ -8,7 +8,7 @@ import json
 import random
 import sys
 from pathlib import Path
-from mathutils import Vector
+from mathutils import Vector, Matrix, Euler
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'art/export'
@@ -147,9 +147,10 @@ def rig():
             ('foot_'+side,(sign*.15,0,.13),(sign*.15,-.18,.10),'shin_'+side),
         ])
     specs.extend([
-        ('weapon_socket',(-.43,-.04,.73),(-.43,-.15,.73),'hand_r'),
-        ('bow_socket',(.43,-.04,.73),(.43,-.15,.73),'hand_l'),
-        ('arrow_socket',(.43,-.20,.83),(.43,-.30,.83),'hand_l')
+        ('weapon_socket',(-.43,-.045,.755),(-.43,-.15,.755),'hand_r'),
+        ('bow_socket',(.43,-.045,.755),(.43,-.15,.755),'hand_l'),
+        ('string_nock',(.43,.135,.755),(.43,.135,.855),'root'),
+        ('arrow_socket',(.43,.135,.755),(.43,.035,.755),'string_nock')
     ])
     for name, head, tail, parent in specs:
         bone = arm.edit_bones.new(name)
@@ -160,7 +161,7 @@ def rig():
     obj.show_in_front = True
     return obj
 
-def sword(center=(-.43,-.09,.77), bone='hand_r', scale=1, forward=1):
+def sword(center=(-.43,-.045,.755), bone='weapon_socket', scale=1, forward=1):
     c = Vector(center)
     def p(x,y,z): return c + Vector((x,y*forward,z))*scale
     rod('Wrapped grip', p(0,0,-.1), p(0,0,.12), .034*scale, 2, bone)
@@ -174,15 +175,34 @@ def sword(center=(-.43,-.09,.77), bone='hand_r', scale=1, forward=1):
     ob=bpy.data.objects.new('Sword blade',mesh);bpy.context.collection.objects.link(ob)
     finish(ob,'Sword blade',5,bone,smooth=False)
 
-def bow(center=(.43,-.12,.78), bone='hand_l', scale=1, forward=1):
+def string_segment(a, b, bone_a, bone_b):
+    # Each end follows its own attachment, so drawing the string stretches the
+    # two halves without moving the bow out of the hand.
+    a,b=Vector(a),Vector(b)
+    verts=[a+Vector((dx,0,dz)) for dx,dz in [(-.004,0),(.004,0),(0,.004)]]
+    verts += [b+Vector((dx,0,dz)) for dx,dz in [(-.004,0),(.004,0),(0,.004)]]
+    mesh=bpy.data.meshes.new('Linen bowstring');mesh.from_pydata(verts,[],[(0,1,4,3),(1,2,5,4),(2,0,3,5)]);mesh.update()
+    ob=bpy.data.objects.new('Linen bowstring',mesh);bpy.context.collection.objects.link(ob)
+    finish(ob,ob.name,7)
+    ob.vertex_groups.new(name=bone_a).add([0,1,2],1,'REPLACE')
+    ob.vertex_groups.new(name=bone_b).add([3,4,5],1,'REPLACE')
+
+def bow(center=(.43,-.045,.755), bone='bow_socket', scale=1, forward=1):
     c=Vector(center)
     points=[]
     for i in range(9):
         t=-1+i/4
-        points.append(c+Vector((0,-.18*forward*(1-t*t),t*.52))*scale)
+        points.append(c+Vector((0,.18*forward*t*t,t*.52))*scale)
     for i in range(8):rod('Yew bow limb',points[i],points[i+1],.024*scale,2,bone,end_radius=.018*scale)
-    rod('Linen string',points[0],points[-1],.005*scale,7,bone,vertices=4)
-    rod('Leather bow grip',c+Vector((0,-.18*forward,-.07))*scale,c+Vector((0,-.18*forward,.07))*scale,.032*scale,3,bone)
+    if bone:
+        nock=c+Vector((0,.18*forward,0))*scale
+        string_segment(points[0],nock,bone,'string_nock')
+        string_segment(nock,points[-1],'string_nock',bone)
+        rod('Nocked arrow',nock,nock+Vector((0,-.85*forward,0)),.008,2,'arrow_socket',vertices=6)
+        ell('Arrowhead',nock+Vector((0,-.86*forward,0)),(.025,.06,.015),4,'arrow_socket',seg=6,rings=4)
+    else:
+        rod('Linen string',points[0],points[-1],.005*scale,7,bone,vertices=4)
+    rod('Leather bow grip',c+Vector((0,0,-.07))*scale,c+Vector((0,0,.07))*scale,.032*scale,3,bone)
 
 def character(kind):
     reset()
@@ -226,8 +246,8 @@ def character(kind):
         cube('Leather apron',(0,-.166,1.02),(.37,.028,.47),2,'spine',bevel=.02)
         ell('Canvas ore sack',(0,.23,1.14),(.21,.145,.27),6,'spine')
         rod('Sack strap',(-.17,-.15,1.38),(.15,-.18,1.02),.025,3,'spine')
-        rod('Pickaxe handle',(-.43,-.06,.58),(-.43,-.32,1.42),.027,2,'hand_r')
-        rod('Pickaxe head',(-.76,-.32,1.42),(-.1,-.32,1.42),.042,4,'hand_r',end_radius=.008)
+        rod('Pickaxe handle',(-.43,-.045,.54),(-.43,-.045,1.42),.027,2,'weapon_socket')
+        rod('Pickaxe head',(-.76,-.045,1.42),(-.1,-.045,1.42),.042,4,'weapon_socket',end_radius=.008)
     else:
         ell('Archer hood',(0,.045,1.70),(.167,.144,.196),bone='head',team=True)
         # An exposed front face is layered forward of the hood.
@@ -257,52 +277,122 @@ def character(kind):
     mesh.data.update()
     export(kind+'_lod')
 
+def eased_keys(t, keys):
+    for (a,va),(b,vb) in zip(keys,keys[1:]):
+        if t <= b:
+            f=max(0,min(1,(t-a)/(b-a)));f=f*f*(3-2*f)
+            return Vector(va).lerp(Vector(vb),f)
+    return Vector(keys[-1][1])
+
+def orient_bone(bone, head, tail):
+    rest=bone.bone.matrix_local
+    q=(bone.bone.tail_local-bone.bone.head_local).rotation_difference(tail-head)
+    matrix=q.to_matrix().to_4x4() @ rest
+    matrix.translation=head
+    bone.matrix=matrix
+    bpy.context.view_layer.update()
+
+def pose_arm(obj, side, grip, angles=(0,0,0)):
+    bones=obj.pose.bones
+    upper,fore,hand=[bones[p+'_'+side] for p in ['upper_arm','forearm','hand']]
+    q=Euler(angles,'XYZ').to_quaternion()
+    # The tool's origin is the palm, not the forearm pivot. Solve to that
+    # contact point, then orient the wrist independently of elbow bending.
+    palm=Vector((.43 if side=='l' else -.43,-.045,.755))
+    wrist=Vector(grip)-q @ (palm-hand.bone.head_local)
+    shoulder=upper.head.copy()
+    delta=wrist-shoulder;distance=delta.length
+    axis=delta.normalized();a=upper.bone.length;b=fore.bone.length
+    distance=max(.03,min(distance,a+b-.002));wrist=shoulder+axis*distance
+    along=(a*a-b*b+distance*distance)/(2*distance)
+    pole=Vector((1 if side=='l' else -1,.65,-.3))
+    bend=(pole-axis*pole.dot(axis)).normalized()
+    elbow=shoulder+axis*along+bend*math.sqrt(max(0,a*a-along*along))
+    orient_bone(upper,shoulder,elbow)
+    orient_bone(fore,elbow,wrist)
+    matrix=q.to_matrix().to_4x4() @ hand.bone.matrix_local
+    matrix.translation=wrist;hand.matrix=matrix
+    bpy.context.view_layer.update()
+    return wrist+q @ (palm-hand.bone.head_local)
+
 def create_animations(obj,kind):
     bones=obj.pose.bones
     names=['idle','walk','carry','mine','melee_attack','bow_attack','hit','death']
     for name in names:
-        duration={'idle':60,'walk':24,'carry':30,'mine':45,'melee_attack':24,'bow_attack':42,'hit':10,'death':28}[name]
+        duration={'idle':60,'walk':30,'carry':36,'mine':45,'melee_attack':60,'bow_attack':60,'hit':12,'death':36}[name]
         obj.animation_data_create();obj.animation_data.action=None
-        for frame in range(1,duration+2,3):
+        for frame in range(1,duration+2):
             t=(frame-1)/duration;a=math.sin(t*math.tau)
             for b in bones:
-                b.rotation_mode='XYZ';b.rotation_euler=(0,0,0);b.location=(0,0,0)
-            bones['spine'].rotation_euler.x=.015*a
+                b.rotation_mode='QUATERNION';b.rotation_quaternion=(1,0,0,0);b.location=(0,0,0);b.scale=(1,1,1)
+            def rotate(bone,angles):bones[bone].rotation_quaternion=Euler(angles,'XYZ').to_quaternion()
+            rotate('spine',(.012*a,0,.008*a))
+            rotate('head',(-.008*a,0,-.006*a))
             if name in ('walk','carry'):
                 for side,sign in [('l',1),('r',-1)]:
-                    bones['thigh_'+side].rotation_euler.x=.48*a*sign
-                    bones['shin_'+side].rotation_euler.x=max(0,-a*sign)*.5
-                    bones['upper_arm_'+side].rotation_euler.x=-.24*a*sign
-                bones['pelvis'].location.y=.018*abs(a)
-                if name=='carry':bones['spine'].rotation_euler.x=.09
-            if name=='mine':
-                bones['upper_arm_r'].rotation_euler.x=-.7-.7*math.cos(t*math.tau)
-                bones['forearm_r'].rotation_euler.x=-.35
-                bones['spine'].rotation_euler.x=.16+.12*a
-            if name=='melee_attack':
-                swing=math.sin(t*math.pi)
-                bones['upper_arm_r'].rotation_euler.x=-1.3*swing
-                bones['upper_arm_r'].rotation_euler.z=-.8*swing
-                bones['spine'].rotation_euler.y=.25*math.sin(t*math.tau)
-            if name=='bow_attack':
-                bones['upper_arm_l'].rotation_euler.x=-1.2
-                bones['forearm_l'].rotation_euler.x=-.2
-                bones['upper_arm_r'].rotation_euler.x=-1.15
-                bones['upper_arm_r'].rotation_euler.z=-.8*math.sin(t*math.pi)
-                bones['forearm_r'].rotation_euler.x=-1.0*math.sin(t*math.pi)
-            if name=='hit':bones['spine'].rotation_euler.x=-.23*math.sin(t*math.pi)
+                    stride=a*sign
+                    rotate('thigh_'+side,(.42*stride,0,0))
+                    rotate('shin_'+side,(max(0,-stride)*.6,0,0))
+                    rotate('foot_'+side,(max(0,-stride)*.22,0,0))
+                bones['pelvis'].location.y=.012*(1-math.cos(t*math.tau*2))
+                rotate('spine',(.055 if name=='carry' else .025,.025*a,.02*a))
+                rotate('head',(-.025,-.018*a,-.015*a))
+            swing=.035*a if name in ('walk','carry') else .008*a
+            left=(.35,-.06+swing,.84)
+            right=(-.34,-.22-swing,1.04)
+            angles=(.25,0,-.1)
+            if kind=='miner':
+                right=(-.36,-.15-swing,.87);angles=(.18,0,.05)
+            elif kind=='archer':
+                left=(.34,-.16-swing,.95);right=(-.30,-.16+swing,1.04);angles=(0,0,0)
+            if name=='melee_attack' and kind=='swordsman':
+                right=eased_keys(t,[(0,right),(.21,(-.42,.01,1.54)),(.35,(-.14,-.52,1.22)),(.50,(.10,-.40,.96)),(.78,(-.25,-.27,1.02)),(1,right)])
+                angles=eased_keys(t,[(0,angles),(.21,(-.65,-.20,-.25)),(.35,(1.35,-.12,-.22)),(.50,(1.6,.30,.22)),(.78,(.4,0,-.1)),(1,angles)])
+                twist=eased_keys(t,[(0,(0,0,0)),(.21,(.03,0,-.20)),(.35,(.10,0,.16)),(.55,(.06,0,.23)),(1,(0,0,0))])
+                rotate('spine',twist);rotate('head',(-twist.x*.4,0,-twist.z*.5))
+                rotate('thigh_l',(-.09*math.sin(t*math.pi),0,0))
+                left=(.33,-.19,1.1)
+            if name=='mine' and kind=='miner':
+                right=eased_keys(t,[(0,(-.2,-.28,1.0)),(.42,(-.14,-.06,1.48)),(.62,(-.15,-.50,1.03)),(.73,(-.15,-.48,1.02)),(1,(-.2,-.28,1.0))])
+                angles=eased_keys(t,[(0,(.45,0,0)),(.42,(-.48,0,0)),(.62,(1.08,0,0)),(.73,(1.02,0,0)),(1,(.45,0,0))])
+                left=Vector(right)+Euler(angles,'XYZ').to_quaternion() @ Vector((0,0,.20))
+                rotate('spine',(.04+.13*math.sin(t*math.pi)**2,0,0))
+            if name=='bow_attack' and kind=='archer':
+                left=eased_keys(t,[(0,left),(.18,(.22,-.51,1.42)),(.35,(.22,-.51,1.42)),(.46,(.22,-.49,1.42)),(.72,(.32,-.23,1.10)),(1,left)])
+                right=eased_keys(t,[(0,right),(.12,(.22,-.34,1.38)),(.29,(.22,-.06,1.42)),(.35,(.22,-.06,1.42)),(.41,(.15,.025,1.45)),(.64,(-.06,.12,1.48)),(.82,(.19,-.10,1.08)),(1,right)])
+                rotate('spine',(.025,0,.06*math.sin(t*math.pi)))
+                rotate('head',(-.025,0,-.06*math.sin(t*math.pi)))
+            if name=='hit':
+                rotate('spine',(-.12*math.sin(t*math.pi),0,.05*math.sin(t*math.pi)))
+                rotate('head',(.07*math.sin(t*math.pi),0,0))
             if name=='death':
-                bones['root'].rotation_euler.x=min(1,t*1.5)*1.48
-                bones['root'].location.z=-.14*min(1,t*1.5)
+                f=min(1,t/0.75);f=f*f*(3-2*f)
+                rotate('root',(1.48*f,0,.12*f));bones['root'].location.z=-.1*f
+            bpy.context.view_layer.update()
+            # Death keeps the natural falling hierarchy. Other clips use
+            # baked analytic two-bone IK for stable grips and elbow arcs.
+            if name!='death':
+                left_grip=pose_arm(obj,'l',left,(0,0,0))
+                right_grip=pose_arm(obj,'r',right,angles)
+                if kind=='miner' and name=='mine':
+                    left_grip=pose_arm(obj,'l',right_grip+Euler(angles,'XYZ').to_quaternion() @ Vector((0,0,.20)),angles)
+                if kind=='archer':
+                    nock=left_grip+Vector((0,.18,0))
+                    if name=='bow_attack' and .10<=t<=.35:nock=right_grip.copy()
+                    elif name=='bow_attack' and .35<t<.43:
+                        f=(t-.35)/.08;nock=nock.lerp(Vector((.22,-.06,1.42)),(1-f)**2*.25*math.cos(f*math.tau*2))
+                    mat=bones['string_nock'].bone.matrix_local.copy();mat.translation=nock;bones['string_nock'].matrix=mat
+            bones['arrow_socket'].scale=(1,1,1) if name=='bow_attack' and .10<=t<=.35 else (.001,.001,.001)
             for b in bones:
-                b.keyframe_insert(data_path='rotation_euler',frame=frame,group=b.name)
-                if b.name in ('root','pelvis'):b.keyframe_insert(data_path='location',frame=frame,group=b.name)
+                b.keyframe_insert(data_path='rotation_quaternion',frame=frame,group=b.name)
+                b.keyframe_insert(data_path='location',frame=frame,group=b.name)
+                b.keyframe_insert(data_path='scale',frame=frame,group=b.name)
         action=obj.animation_data.action;action.name=name;action.use_fake_user=True
         track=obj.animation_data.nla_tracks.new();track.name=name
         strip=track.strips.new(name,1,action);strip.action_frame_start=1;strip.action_frame_end=duration+1
         track.mute=True
     obj.animation_data.action=None
-    for b in bones:b.rotation_euler=(0,0,0);b.location=(0,0,0)
+    for b in bones:b.rotation_quaternion=(1,0,0,0);b.location=(0,0,0);b.scale=(1,1,1)
     bpy.context.scene.frame_set(1)
 
 def export(name):
@@ -319,25 +409,73 @@ def save_export(name):
 
 def first_person(kind):
     reset()
-    # Author directly in camera coordinates, converted to Blender XYZ.
-    def p(x,y,z):return (x,-z,y)
-    for sign in [-1,1]:
-        wrist=p(sign*.24,-.27,-.46)
-        elbow=p(sign*.38,-.49,-.05)
-        rod('Sleeve',elbow,p(sign*.30,-.35,-.28),.075,team=True,end_radius=.065)
-        rod('Forearm',p(sign*.30,-.35,-.27),wrist,.059,1,end_radius=.044)
-        rod('Bracer',p(sign*.27,-.30,-.38),wrist,.06,2,end_radius=.055)
-        ell('Hand',wrist,(.06,.072,.05),1,seg=10,rings=6)
+    def p(x,y,z):return Vector((x,-z,y))
+    grips={'l':p(-.24,-.27,-.46),'r':p(.24,-.27,-.46)}
+    if kind=='archer':grips['l']=p(-.24,-.22,-.58)
+    elbows={side:p(sign*.38,-.49,-.05) for side,sign in [('l',-1),('r',1)]}
+    for side,sign in [('l',-1),('r',1)]:
+        wrist=grips[side];elbow=elbows[side]
+        mid=elbow.lerp(wrist,.48)
+        rod('Sleeve '+side,elbow,mid,.075,bone='forearm_'+side,team=True,end_radius=.065)
+        rod('Forearm '+side,mid,wrist,.059,1,'forearm_'+side,end_radius=.044)
+        rod('Bracer '+side,elbow.lerp(wrist,.80),wrist,.060,2,'forearm_'+side,end_radius=.055)
+        ell('Hand '+side,wrist,(.06,.062,.05),1,'hand_'+side,seg=10,rings=6)
         for finger in range(3):
-            ell('Knuckle',p(sign*.24+(finger-1)*.025,-.265,-.50),(.013,.021,.016),0,seg=6,rings=4)
-    if kind=='swordsman':
-        # Sword functions use Blender Z-up; camera grip below-right and blade above.
-        sword(center=p(.26,-.28,-.58),bone=None,scale=.66,forward=-1)
-    else:
-        bow(center=p(-.24,-.22,-.53),bone=None,scale=.95,forward=-1)
-        rod('Nocked arrow',p(-.22,-.22,-.4),p(-.22,-.22,-1.12),.008,2,vertices=6)
-        ell('Arrowhead',p(-.22,-.22,-1.12),(.021,.04,.012),4,seg=6,rings=4)
-    join('First person '+kind)
+            ell('Knuckle',wrist+Vector(((finger-1)*.024,.035,0)),(.014,.022,.016),0,'hand_'+side,seg=6,rings=4)
+    if kind=='swordsman':sword(center=grips['r'],bone='weapon_socket',scale=.66,forward=-1)
+    else:bow(center=grips['l'],bone='bow_socket',scale=.95,forward=-1)
+    mesh=join('First person '+kind)
+    arm=bpy.data.armatures.new('First person arms');obj=bpy.data.objects.new('FirstPersonRig',arm)
+    bpy.context.collection.objects.link(obj);bpy.context.view_layer.objects.active=obj;obj.select_set(True)
+    bpy.ops.object.mode_set(mode='EDIT')
+    specs=[('root',Vector((0,0,0)),Vector((0,0,.1)),None)]
+    for side in ['l','r']:
+        specs += [('forearm_'+side,elbows[side],grips[side],'root'),('hand_'+side,grips[side],grips[side]+Vector((0,.1,0)),'forearm_'+side)]
+    nock=grips['l']+Vector((0,-.18*.95,0))
+    specs += [('weapon_socket',grips['r'],grips['r']+Vector((0,.1,0)),'hand_r'),('bow_socket',grips['l'],grips['l']+Vector((0,.1,0)),'hand_l'),('string_nock',nock,nock+Vector((0,0,.1)),'root'),('arrow_socket',nock,nock+Vector((0,.1,0)),'string_nock')]
+    for name,head,tail,parent in specs:
+        b=arm.edit_bones.new(name);b.head=head;b.tail=tail
+        if parent:b.parent=arm.edit_bones[parent]
+    bpy.ops.object.mode_set(mode='OBJECT')
+    mesh.parent=obj;mod=mesh.modifiers.new('First person skin','ARMATURE');mod.object=obj
+    bones=obj.pose.bones
+    for name in ['idle','melee_attack','bow_attack']:
+        obj.animation_data_create();obj.animation_data.action=None
+        for frame in range(1,62):
+            t=(frame-1)/60
+            for b in bones:
+                b.rotation_mode='QUATERNION';b.rotation_quaternion=(1,0,0,0);b.location=(0,0,0);b.scale=(1,1,1)
+            targets={s:g.copy() for s,g in grips.items()};angles={'l':(0,0,0),'r':(0,0,0)}
+            if name=='melee_attack' and kind=='swordsman':
+                targets['r']=eased_keys(t,[(0,grips['r']),(.21,p(.39,-.10,-.35)),(.35,p(-.04,-.17,-.65)),(.50,p(-.26,-.32,-.48)),(.8,p(.15,-.30,-.42)),(1,grips['r'])])
+                angles['r']=eased_keys(t,[(0,(0,0,0)),(.21,(.3,.15,-.3)),(.35,(-1.30,-.2,.3)),(.5,(-1.6,-.35,.4)),(1,(0,0,0))])
+                targets['l']+=p(0,-.02*math.sin(t*math.pi),-.03*math.sin(t*math.pi))
+            if name=='bow_attack' and kind=='archer':
+                targets['l']=eased_keys(t,[(0,grips['l']),(.2,p(-.22,-.18,-.62)),(.35,p(-.22,-.18,-.62)),(.43,p(-.22,-.19,-.58)),(1,grips['l'])])
+                targets['r']=eased_keys(t,[(0,grips['r']),(.12,p(-.22,-.18,-.45)),(.29,p(-.22,-.18,-.18)),(.35,p(-.22,-.18,-.18)),(.41,p(-.17,-.16,-.12)),(.64,p(.30,-.27,-.17)),(.86,p(-.20,-.24,-.40)),(1,grips['r'])])
+            if name=='idle':
+                for side in targets:targets[side]+=p(0,.003*math.sin(t*math.tau),0)
+            bpy.context.view_layer.update()
+            for side in ['l','r']:
+                fore,hand=bones['forearm_'+side],bones['hand_'+side]
+                orient_bone(fore,elbows[side],targets[side])
+                # Keep forearms joined to their hands over the small viewmodel arc.
+                fore.scale.y=(targets[side]-elbows[side]).length/fore.bone.length
+                bpy.context.view_layer.update()
+                matrix=Euler(angles[side],'XYZ').to_matrix().to_4x4() @ hand.bone.matrix_local
+                matrix.translation=targets[side];hand.matrix=matrix
+                bpy.context.view_layer.update()
+            nock=targets['l']+Vector((0,-.18*.95,0))
+            if name=='bow_attack' and .1<=t<=.35:nock=targets['r'].copy()
+            matrix=bones['string_nock'].bone.matrix_local.copy();matrix.translation=nock;bones['string_nock'].matrix=matrix
+            bones['arrow_socket'].scale=(1,1,1) if kind=='archer' and (name=='idle' or name=='bow_attack' and t<=.35) else (.001,.001,.001)
+            for b in bones:
+                for path in ['rotation_quaternion','location','scale']:b.keyframe_insert(data_path=path,frame=frame,group=b.name)
+        action=obj.animation_data.action;action.name=name;action.use_fake_user=True
+        track=obj.animation_data.nla_tracks.new();track.name=name;strip=track.strips.new(name,1,action);strip.action_frame_end=61;track.mute=True
+    obj.animation_data.action=None
+    for b in bones:b.rotation_quaternion=(1,0,0,0);b.location=(0,0,0);b.scale=(1,1,1)
+    bpy.context.scene.frame_set(1)
     save_export('fp_'+kind)
 
 def arena():

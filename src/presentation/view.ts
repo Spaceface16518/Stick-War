@@ -8,6 +8,7 @@ import {
   type UnitState,
 } from "../simulation/types";
 import { AssetStore, teamColors } from "./assets";
+import { UnitAnimator, attackClipProgress } from "./animation";
 import {
   box,
   material,
@@ -18,9 +19,7 @@ interface Actor {
   assetKey: string;
   root: THREE.Group;
   model: THREE.Group;
-  mixer: THREE.AnimationMixer | null;
-  actions: Map<string, THREE.AnimationAction>;
-  clip: string;
+  animator: UnitAnimator | null;
   bar: THREE.Mesh;
   ring: THREE.Mesh;
   phaseTime: number;
@@ -53,6 +52,7 @@ export class BattleView {
   }[] = [];
   private fpsModel: THREE.Group | null = null;
   private fpsKey = "";
+  private fpsAnimators = new Map<string, UnitAnimator>();
   private controlled: number | null = null;
   private lastControlledX = -20;
   private raycaster = new THREE.Raycaster();
@@ -218,6 +218,7 @@ export class BattleView {
     const loaded = this.assets.instantiate(assetKey, u.team);
     const model = loaded?.root ?? primitiveCharacter(u.kind, u.team);
     const root = new THREE.Group();
+    root.rotation.y = u.yaw;
     root.add(model);
     root.userData.unitId = u.id;
     model.traverse((o) => {
@@ -227,18 +228,7 @@ export class BattleView {
         o.receiveShadow = true;
       }
     });
-    const mixer = loaded ? new THREE.AnimationMixer(model) : null;
-    const actions = new Map<string, THREE.AnimationAction>();
-    if (mixer)
-      for (const clip of loaded!.clips) {
-        const action = mixer.clipAction(clip);
-        if (clip.name.endsWith("_attack")) {
-          action.timeScale = 2;
-          action.setLoop(THREE.LoopOnce, 1);
-          action.clampWhenFinished = true;
-        }
-        actions.set(clip.name, action);
-      }
+    const animator = loaded ? new UnitAnimator(model, loaded.clips) : null;
     const bar = new THREE.Mesh(
       this.healthGeometry,
       this.healthMaterials[u.team],
@@ -255,9 +245,7 @@ export class BattleView {
       assetKey,
       root,
       model,
-      mixer,
-      actions,
-      clip: "",
+      animator,
       bar,
       ring,
       phaseTime: 0,
@@ -274,8 +262,7 @@ export class BattleView {
   }
   private removeActor(actor: Actor): void {
     this.scene.remove(actor.root);
-    actor.mixer?.stopAllAction();
-    actor.mixer?.uncacheRoot(actor.model);
+    actor.animator?.dispose();
     this.disposeSkeletons(actor.model);
   }
   consume(events: BattleEvent[]): void {
@@ -340,7 +327,13 @@ export class BattleView {
           0,
           THREE.MathUtils.lerp(u.previous.z, u.z, alpha),
         );
-        actor.root.rotation.y = u.yaw;
+        const turn = Math.atan2(
+          Math.sin(u.yaw - actor.root.rotation.y),
+          Math.cos(u.yaw - actor.root.rotation.y),
+        );
+        actor.root.rotation.y +=
+          turn *
+          (snapshot.paused || this.reducedMotion ? 1 : 1 - Math.exp(-dt * 18));
         actor.root.visible = u.id !== snapshot.controlledId;
         actor.bar.scale.x = Math.max(0, u.health / u.maxHealth);
         actor.bar.visible = u.health < u.maxHealth || u.id === this.selectedId;
@@ -349,26 +342,13 @@ export class BattleView {
           .premultiply(actor.root.quaternion.clone().invert());
         actor.ring.visible = u.id === this.selectedId;
         actor.phaseTime += snapshot.paused ? 0 : dt;
-        const desired =
-          u.phase === "attack"
-            ? u.kind === "archer"
-              ? "bow_attack"
-              : "melee_attack"
-            : u.phase === "carry"
-              ? "carry"
-              : u.phase === "mine"
-                ? "mine"
-                : u.phase === "hit"
-                  ? "hit"
-                  : u.phase;
-        const clip = actor.actions.has(desired) ? desired : "idle";
-        if (clip !== actor.clip) {
-          actor.actions.get(actor.clip)?.fadeOut(0.12);
-          actor.actions.get(clip)?.reset().fadeIn(0.12).play();
-          actor.clip = clip;
-        }
-        if (!snapshot.paused) actor.mixer?.update(dt);
-        if (!actor.mixer) {
+        actor.animator?.update(
+          u,
+          snapshot.elapsed - (snapshot.paused ? 0 : (1 - alpha) / 60),
+          dt,
+          snapshot.paused,
+        );
+        if (!actor.animator) {
           actor.model.rotation.z =
             u.phase === "walk" || u.phase === "carry"
               ? Math.sin(actor.phaseTime * 8) * 0.035
@@ -445,9 +425,15 @@ export class BattleView {
         if (this.fpsModel) this.firstPerson.remove(this.fpsModel);
         let model = this.modelCache.get(key);
         if (!model) {
+          const loaded = this.assets.instantiate(
+            "fp_" + possessed.kind,
+            possessed.team,
+          );
           model =
-            this.assets.instantiate("fp_" + possessed.kind, possessed.team)
-              ?.root ?? primitiveFirstPerson(possessed.kind, possessed.team);
+            loaded?.root ??
+            primitiveFirstPerson(possessed.kind, possessed.team);
+          if (loaded?.clips.length)
+            this.fpsAnimators.set(key, new UnitAnimator(model, loaded.clips));
           this.modelCache.set(key, model);
         }
         this.fpsModel = model;
@@ -462,13 +448,13 @@ export class BattleView {
       }
       if (this.fpsModel) {
         this.fpsModel.visible = true;
-        const def = this.config.units[possessed.kind];
-        const swing =
-          possessed.cooldown > 0
-            ? Math.sin(
-                (1 - clamp(possessed.cooldown / def.cooldown, 0, 1)) * Math.PI,
-              )
-            : 0;
+        const time =
+          snapshot!.elapsed - (snapshot!.paused ? 0 : (1 - alpha) / 60);
+        const animator = this.fpsAnimators.get(this.fpsKey);
+        animator?.update(possessed, time, dt, snapshot!.paused);
+        const swing = animator
+          ? 0
+          : Math.sin((attackClipProgress(possessed, time) ?? 0) * Math.PI);
         this.fpsModel.rotation.z =
           possessed.kind === "swordsman"
             ? -swing * (this.reducedMotion ? 0.15 : 0.65)

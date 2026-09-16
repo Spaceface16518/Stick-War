@@ -54,6 +54,7 @@ export interface UnitState extends Point {
   yaw: number;
   cooldown: number;
   attack: AttackState | null;
+  attackMotion: { startedAt: number; duration: number; windup: number } | null;
   phase: UnitPhase;
   carried: number;
   miningRemaining: number;
