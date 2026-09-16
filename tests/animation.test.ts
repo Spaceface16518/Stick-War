@@ -67,6 +67,11 @@ function animatedRig() {
       track("thigh_l", 0),
       track("spine", 0),
     ]),
+    new THREE.AnimationClip("mine", 1, [
+      track("hand_l", 1),
+      track("thigh_l", 0),
+      track("spine", 0),
+    ]),
     new THREE.AnimationClip("hit_front", 0.42, [
       new THREE.VectorKeyframeTrack(
         "spine.position",
@@ -78,6 +83,37 @@ function animatedRig() {
   return { animator: new UnitAnimator(root, clips), bones };
 }
 describe("animation follows simulation", () => {
+  it("keeps a miner's pick cycle running through additive recoil", () => {
+    const { animator, bones } = animatedRig();
+    const miner: UnitState = {
+      ...unit,
+      kind: "miner",
+      attackMotion: null,
+      phase: "mine",
+      minerState: "mining",
+      z: 0,
+      distanceTravelled: 0,
+    };
+    animator.update(miner, 0.1, 0.1, false);
+    animator.update(
+      {
+        ...miner,
+        phase: "hit",
+        hitMotion: {
+          startedAt: 0.1,
+          duration: 0.42,
+          direction: { x: 0, z: -1 },
+          strength: 0.5,
+        },
+      },
+      0.2,
+      0.1,
+      false,
+    );
+    expect(bones.hand_l.position.x).toBeCloseTo(0.2);
+    expect(bones.spine.position.x).toBeCloseTo(0.06);
+    animator.dispose();
+  });
   it("puts contact at the captured windup and preserves the full recovery", () => {
     expect(attackClipProgress(unit, 0.2)).toBeCloseTo(0.35);
     expect(attackClipProgress(unit, 0.6)).toBeCloseTo(0.675);

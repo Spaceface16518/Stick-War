@@ -198,7 +198,7 @@ export class UnitAnimator {
     const desired =
       attack !== null
         ? unit.attackMotion!.clip
-        : unit.phase === "mine"
+        : unit.kind === "miner" && unit.minerState === "mining" && !locomotion
           ? "mine"
           : (locomotion ?? "idle");
     for (const layer of this.layers) {
