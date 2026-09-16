@@ -152,6 +152,13 @@ export class InputController {
     }
     const role =
       touchTarget?.dataset.touch ?? (this.actions.possessed() ? "look" : "pan");
+    if (
+      e.pointerType === "mouse" &&
+      this.actions.possessed() &&
+      e.button === 0 &&
+      performance.now() > this.ignoreUntil
+    )
+      this.mouseAttack = true;
     const capture = touchTarget ?? this.canvas;
     try {
       capture.setPointerCapture(e.pointerId);

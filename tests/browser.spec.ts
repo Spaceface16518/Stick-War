@@ -257,6 +257,28 @@ test("pointer-lock loss releases possession and entry cannot fire", async ({
   await page.evaluate(() => document.exitPointerLock());
   await expect.poll(async () => (await state(page)).controlledId).toBeNull();
   await expect(page.locator("#pov")).toBeHidden();
+  // A browser without pointer lock must still support mouse attack and drag aiming.
+  await page.evaluate(() =>
+    Object.defineProperty(HTMLCanvasElement.prototype, "requestPointerLock", {
+      value: undefined,
+      configurable: true,
+    }),
+  );
+  await page.keyboard.press("Tab");
+  const entered = (await state(page)).elapsed;
+  await expect
+    .poll(async () => (await state(page)).elapsed)
+    .toBeGreaterThan(entered + 0.25);
+  await page.mouse.move(600, 350);
+  await page.mouse.down();
+  await page.mouse.move(630, 350);
+  await expect
+    .poll(
+      async () =>
+        (await state(page)).units.find((u) => u.kind === "swordsman")!.cooldown,
+    )
+    .toBeGreaterThan(0);
+  await page.mouse.up();
 });
 
 test("valid balance reload updates future requests; invalid reload keeps prior values", async ({
