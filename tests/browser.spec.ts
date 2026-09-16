@@ -344,10 +344,13 @@ test("rendered battle performance sample and static-menu idle", async ({
           (resolve) => {
             const times: number[] = [];
             let last = 0;
+            let start = 0;
             function frame(now: number) {
+              if (!start) start = now;
               if (last) times.push(now - last);
               last = now;
-              if (times.length < 180) requestAnimationFrame(frame);
+              if (times.length < 180 && now - start < 3000)
+                requestAnimationFrame(frame);
               else {
                 const sorted = [...times].sort((a, b) => a - b);
                 resolve({

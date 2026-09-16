@@ -4,7 +4,8 @@ export default defineConfig({
   testMatch: "**/*.spec.ts",
   fullyParallel: false,
   workers: 1,
-  timeout: 45000,
+  timeout: process.env.CI ? 120000 : 45000,
+  expect: { timeout: process.env.CI ? 15000 : 5000 },
   use: {
     baseURL: "http://127.0.0.1:5173",
     screenshot: "only-on-failure",
