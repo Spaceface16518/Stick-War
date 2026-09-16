@@ -2,5 +2,9 @@ import { defineConfig } from "vite";
 export default defineConfig({
   base: "./",
   build: { target: "es2022", chunkSizeWarningLimit: 2500 },
-  server: { port: 5173, strictPort: true },
+  server: {
+    port: 5173,
+    strictPort: true,
+    watch: { awaitWriteFinish: { stabilityThreshold: 120, pollInterval: 20 } },
+  },
 });

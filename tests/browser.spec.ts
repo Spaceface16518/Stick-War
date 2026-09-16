@@ -284,21 +284,29 @@ test("pointer-lock loss releases possession and entry cannot fire", async ({
 test("valid balance reload updates future requests; invalid reload keeps prior values", async ({
   page,
 }) => {
-  const { readFile, writeFile } = await import("node:fs/promises");
+  const { readFile, writeFile, rename } = await import("node:fs/promises");
   const configPath = new URL("../config/game.json", import.meta.url);
+  const pendingPath = new URL(
+    "../config/game.reload-check.tmp",
+    import.meta.url,
+  );
+  const replaceConfig = async (content: string) => {
+    await writeFile(pendingPath, content);
+    await rename(pendingPath, configPath);
+  };
   const original = await readFile(configPath, "utf8");
   await open(page);
   try {
     const changed = JSON.parse(original);
     changed.units.swordsman.cost = 77;
-    await writeFile(configPath, JSON.stringify(changed, null, 2) + "\n");
+    await replaceConfig(JSON.stringify(changed, null, 2) + "\n");
     await expect
       .poll(() =>
         page.evaluate(() => window.__stickWar.config().units.swordsman.cost),
       )
       .toBe(77);
     changed.economy.passiveSeconds = 0;
-    await writeFile(configPath, JSON.stringify(changed, null, 2) + "\n");
+    await replaceConfig(JSON.stringify(changed, null, 2) + "\n");
     await expect(page.locator("#dev-error")).toContainText(
       "Balance reload rejected",
     );
@@ -313,7 +321,7 @@ test("valid balance reload updates future requests; invalid reload keeps prior v
       ),
     ).toBe(77);
   } finally {
-    await writeFile(configPath, original);
+    await replaceConfig(original);
   }
   await expect
     .poll(() =>
