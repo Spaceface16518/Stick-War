@@ -43,6 +43,12 @@ The fixed-step order is economy/training/recruitment, target acquisition, kinema
 
 The simulation imports no Three.js or DOM modules. Rapier is behind `SpatialWorld`, making collision behavior replaceable without storing gameplay in a mesh. Entity IDs monotonically increase within each battle; the configured 64-bit seed is retained as a string and processed with BigInt. Damage is aggregated before outcomes, so simultaneous statue destruction produces a draw. Sandbox retains its scene and dead statues without opening results.
 
+### UI boundary
+
+`src/ui/screens.ts` holds readable menu and battle templates, mounted only on screen transitions. Three small Lit components in `src/ui/components/` own the conditional dialog, sandbox controls and training buttons. They accept JavaScript properties and an action callback; `GameApp` still owns settings, commands and battle state. Sandbox collapse is local UI state. Training buttons update only when their labels or availability change.
+
+Components render into light DOM to share the existing stylesheet and preserve native input targets. No decorators, component style system or state library is required. `GameUI` keeps the simple cached DOM updates for time, health, population, orders and POV; the touch controls stay mounted for the lifetime of a battle. Restart replaces the screen and resets component state. Loading progress and platform input remain plain TypeScript.
+
 ## Content contracts
 
 Costs, training durations, health, speeds, combat timing, mining and AI values remain in `config/game.json`. Values are converted at 50 legacy distance units per metre; new capsule radius, four-column formations, camera and scenery are authored for 3D. Historical RON is the reference, not a runtime dependency.

@@ -199,7 +199,7 @@ export class GameApp {
       new RapierSpatial(defaultArena),
     );
     this.refresh();
-    this.ui.battle(mode, this.config);
+    this.ui.battle(mode);
     this.accumulator = 0;
     this.lastFrame = 0;
     this.frameTimes = [];
