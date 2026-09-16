@@ -23,7 +23,7 @@ npm run assets:check
 
 `assets:build` never regenerates or saves source files. `assets:animate` explicitly replaces the actions in the selected source; it compares mesh geometry, topology, materials and skin weights before/after and aborts if those changed. `assets:author` replaces the selected source from the procedural authoring code. Use these two regeneration commands only when deliberately changing the generated art or motion. Without `--asset`, a command handles all sources.
 
-`BLENDER_PATH` overrides `/Applications/Blender.app/Contents/MacOS/Blender`. Scratch GLBs go to ignored `art/export/`; project-local glTF Transform writes optimized assets and the manifest to `public/assets/`. `node scripts/build-assets.mjs --exports-only` optimizes existing scratch exports. Arena anchors are validated against `config/arena.json` rather than changing gameplay layout silently.
+`BLENDER_PATH` overrides the Blender executable (the application bundle on macOS, or `blender` on PATH on Linux). Scratch GLBs go to ignored `art/export/`; project-local glTF Transform writes optimized assets and the manifest to `public/assets/`. `node scripts/build-assets.mjs --exports-only` optimizes existing scratch exports. Arena anchors are validated against `config/arena.json` rather than changing gameplay layout silently.
 
 Authoring code has small, separate responsibilities:
 
