@@ -80,7 +80,7 @@ export class BattleView {
       Math.min(devicePixelRatio, this.mobile ? 1.25 : 2),
     );
     this.renderer.shadowMap.enabled = !this.mobile;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;

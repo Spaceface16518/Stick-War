@@ -9,7 +9,7 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:5173",
     screenshot: "only-on-failure",
-    trace: "retain-on-failure",
+    trace: { mode: "retain-on-failure", screenshots: false, snapshots: true },
     launchOptions: {
       channel: process.env.CI ? undefined : "chrome",
       args: ["--enable-webgl", "--ignore-gpu-blocklist"],
