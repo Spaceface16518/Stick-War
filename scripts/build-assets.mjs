@@ -15,7 +15,9 @@ const selected = selectedIndex < 0 ? null : process.argv[selectedIndex + 1];
 if (!process.argv.includes("--exports-only")) {
   const blender =
     process.env.BLENDER_PATH ||
-    "/Applications/Blender.app/Contents/MacOS/Blender";
+    (process.platform === "darwin"
+      ? "/Applications/Blender.app/Contents/MacOS/Blender"
+      : "blender");
   const result = spawnSync(
     blender,
     [
@@ -28,6 +30,7 @@ if (!process.argv.includes("--exports-only")) {
     ],
     { stdio: "inherit", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } },
   );
+  if (result.error) throw result.error;
   if (result.status !== 0)
     throw new Error(`Blender failed: ${result.status ?? result.signal}`);
 }
