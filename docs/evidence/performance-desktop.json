@@ -1,0 +1,62 @@
+{
+  "project": "desktop",
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "samples": [
+    {
+      "requestedUnits": 24,
+      "scenario": "Sustained combat centered in view; increased health prevents population decay",
+      "meanMs": 16.66611111111111,
+      "p95Ms": 16.700000000000273,
+      "samples": 180,
+      "diagnostics": {
+        "simulation": {
+          "units": 24,
+          "projectiles": 0,
+          "colliders": 31,
+          "tick": 785
+        },
+        "rendering": {
+          "actors": 24,
+          "arrows": 0,
+          "corpses": 0,
+          "geometries": 9,
+          "textures": 52,
+          "drawCalls": 102,
+          "renderedFrames": 186
+        },
+        "frameCount": 181,
+        "averageFrameMs": 17.12651933701657
+      }
+    },
+    {
+      "requestedUnits": 100,
+      "scenario": "Sustained combat centered in view; increased health prevents population decay",
+      "meanMs": 16.666666666666668,
+      "p95Ms": 16.700000000000728,
+      "samples": 180,
+      "diagnostics": {
+        "simulation": {
+          "units": 100,
+          "projectiles": 14,
+          "colliders": 107,
+          "tick": 1571
+        },
+        "rendering": {
+          "actors": 100,
+          "arrows": 14,
+          "corpses": 0,
+          "geometries": 9,
+          "textures": 204,
+          "drawCalls": 434,
+          "renderedFrames": 371
+        },
+        "frameCount": 363,
+        "averageFrameMs": 17.125123966942148
+      }
+    }
+  ],
+  "physicalPhone": false
+}

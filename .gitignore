@@ -1,4 +1,10 @@
-/target/
+/node_modules/
 /dist/
+/target/
 /bevy/
+/test-results/
+/playwright-report/
+/art/export/
+*.blend1
+__pycache__/
 .DS_Store
