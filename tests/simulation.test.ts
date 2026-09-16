@@ -40,6 +40,61 @@ function tinyArena(): ArenaDefinition {
   };
 }
 describe("battle rules", () => {
+  it("can win with unchanged balance through economy, defense and a counterattack", () => {
+    const s = new BattleSimulation(
+      defaultConfig,
+      defaultArena,
+      "skirmish",
+      new RapierSpatial(defaultArena),
+    );
+    let attacking = false;
+    for (let n = 0; n < 240 && !s.snapshot().outcome; n++) {
+      const state = s.snapshot();
+      const count = (kind: "miner" | "swordsman" | "archer") =>
+        state.units.filter((u) => u.team === "blue" && u.kind === kind).length +
+        state.training.filter((t) => t.team === "blue" && t.kind === kind)
+          .length;
+      const kind =
+        count("miner") < 2
+          ? "miner"
+          : count("swordsman") >= (count("archer") + 1) * 2
+            ? "archer"
+            : "swordsman";
+      s.command({ type: "train", team: "blue", kind });
+      if (count("swordsman") + count("archer") >= 7) attacking = true;
+      s.command({
+        type: "order",
+        team: "blue",
+        order: attacking ? "attack" : "defend",
+      });
+      advance(s, 2);
+    }
+    expect(s.snapshot().outcome).toBe("victory");
+    s.dispose();
+  });
+  it("mirrors miners and carried resources throughout their first cycle", () => {
+    const s = sandbox();
+    s.command({ type: "pause", paused: false });
+    for (let n = 0; n < 720; n++) {
+      s.step();
+      const [blue, red] = s.snapshot().units;
+      expect(blue.x).toBeCloseTo(-red.x, 4);
+      expect(blue.z).toBeCloseTo(-red.z, 4);
+      expect(blue.carried).toBe(red.carried);
+    }
+    s.dispose();
+  });
+  it("retreats all four formation columns around the home statue", () => {
+    const s = sandbox();
+    for (let n = 0; n < 4; n++)
+      s.command({ type: "train", team: "blue", kind: "swordsman" });
+    s.command({ type: "order", team: "blue", order: "retreat" });
+    s.command({ type: "pause", paused: false });
+    advance(s, 20);
+    for (const u of s.snapshot().units.filter((u) => u.team === "blue"))
+      expect(u.x).toBeLessThan(-29.1);
+    s.dispose();
+  });
   it("starts paused, trains immediately and keeps slots/costs symmetric", () => {
     const s = sandbox();
     expect(s.snapshot().paused).toBe(true);

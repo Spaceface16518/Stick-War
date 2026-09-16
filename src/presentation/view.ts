@@ -15,6 +15,7 @@ import {
   primitiveFirstPerson,
 } from "./primitive-models";
 interface Actor {
+  assetKey: string;
   root: THREE.Group;
   model: THREE.Group;
   mixer: THREE.AnimationMixer | null;
@@ -45,7 +46,11 @@ export class BattleView {
     transparent: true,
     opacity: 0.9,
   });
-  private corpses: { root: THREE.Group; time: number }[] = [];
+  private corpses: {
+    root: THREE.Group;
+    mixer: THREE.AnimationMixer | null;
+    time: number;
+  }[] = [];
   private fpsModel: THREE.Group | null = null;
   private fpsKey = "";
   private controlled: number | null = null;
@@ -55,6 +60,7 @@ export class BattleView {
   panX = -20;
   viewHeight: number;
   selectedId: number | null = null;
+  reducedMotion = false;
   private width = 1;
   private height = 1;
   readonly mobile = matchMedia("(pointer:coarse)").matches;
@@ -77,11 +83,11 @@ export class BattleView {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.3;
+    this.renderer.toneMappingExposure = 1.05;
     this.scene.background = new THREE.Color(0xcddbd6);
     this.scene.fog = new THREE.Fog(0xcddbd6, 65, 130);
-    this.scene.add(new THREE.HemisphereLight(0xe5f2fa, 0x6c664b, 2.3));
-    const sun = new THREE.DirectionalLight(0xffe2a9, 3.2);
+    this.scene.add(new THREE.HemisphereLight(0xe5f2fa, 0x6c664b, 1.5));
+    const sun = new THREE.DirectionalLight(0xffe2a9, 2.6);
     sun.position.set(-15, 24, 16);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -208,11 +214,8 @@ export class BattleView {
     );
     this.updateCommander();
   }
-  private spawnActor(u: UnitState): Actor {
-    const loaded = this.assets.instantiate(
-      this.config.units[u.kind].asset,
-      u.team,
-    );
+  private spawnActor(u: UnitState, assetKey: string): Actor {
+    const loaded = this.assets.instantiate(assetKey, u.team);
     const model = loaded?.root ?? primitiveCharacter(u.kind, u.team);
     const root = new THREE.Group();
     root.add(model);
@@ -227,8 +230,15 @@ export class BattleView {
     const mixer = loaded ? new THREE.AnimationMixer(model) : null;
     const actions = new Map<string, THREE.AnimationAction>();
     if (mixer)
-      for (const clip of loaded!.clips)
-        actions.set(clip.name, mixer.clipAction(clip));
+      for (const clip of loaded!.clips) {
+        const action = mixer.clipAction(clip);
+        if (clip.name.endsWith("_attack")) {
+          action.timeScale = 2;
+          action.setLoop(THREE.LoopOnce, 1);
+          action.clampWhenFinished = true;
+        }
+        actions.set(clip.name, action);
+      }
     const bar = new THREE.Mesh(
       this.healthGeometry,
       this.healthMaterials[u.team],
@@ -242,6 +252,7 @@ export class BattleView {
     root.add(ring);
     this.scene.add(root);
     const actor = {
+      assetKey,
       root,
       model,
       mixer,
@@ -254,20 +265,47 @@ export class BattleView {
     this.actors.set(u.id, actor);
     return actor;
   }
+  private disposeSkeletons(root: THREE.Object3D): void {
+    const skeletons = new Set<THREE.Skeleton>();
+    root.traverse((o) => {
+      if (o instanceof THREE.SkinnedMesh) skeletons.add(o.skeleton);
+    });
+    for (const skeleton of skeletons) skeleton.dispose();
+  }
+  private removeActor(actor: Actor): void {
+    this.scene.remove(actor.root);
+    actor.mixer?.stopAllAction();
+    actor.mixer?.uncacheRoot(actor.model);
+    this.disposeSkeletons(actor.model);
+  }
   consume(events: BattleEvent[]): void {
+    if (this.reducedMotion) return;
     for (const event of events)
       if (event.type === "death") {
         const actor = this.actors.get(event.unit.id);
         if (!actor) continue;
-        const clone = actor.model.clone(true);
+        const loaded = this.assets.instantiate(actor.assetKey, event.unit.team);
+        const clone = loaded?.root ?? actor.model.clone(true);
         const corpse = new THREE.Group();
         corpse.add(clone);
         corpse.position.set(event.unit.x, 0, event.unit.z);
         corpse.rotation.y = event.unit.yaw;
         this.scene.add(corpse);
-        this.corpses.push({ root: corpse, time: 0 });
-        while (this.corpses.length > this.config.presentation.maxCorpses)
-          this.scene.remove(this.corpses.shift()!.root);
+        const mixer = loaded ? new THREE.AnimationMixer(clone) : null;
+        const death = loaded?.clips.find((c) => c.name === "death");
+        if (death && mixer) {
+          const action = mixer.clipAction(death);
+          action.setLoop(THREE.LoopOnce, 1);
+          action.clampWhenFinished = true;
+          action.play();
+        }
+        this.corpses.push({ root: corpse, mixer, time: 0 });
+        while (this.corpses.length > this.config.presentation.maxCorpses) {
+          const old = this.corpses.shift()!;
+          old.mixer?.stopAllAction();
+          this.disposeSkeletons(old.root);
+          this.scene.remove(old.root);
+        }
       }
   }
   render(
@@ -277,10 +315,26 @@ export class BattleView {
     look: { yaw: number; pitch: number },
   ): void {
     const active = new Set<number>();
+    const possessed = snapshot?.units.find(
+      (u) => u.id === snapshot.controlledId,
+    );
     if (snapshot)
       for (const u of snapshot.units) {
         active.add(u.id);
-        const actor = this.actors.get(u.id) ?? this.spawnActor(u);
+        const baseKey = this.config.units[u.kind].asset;
+        const close =
+          possessed && Math.hypot(u.x - possessed.x, u.z - possessed.z) < 12;
+        const assetKey =
+          !close && this.assets.has(baseKey + "_lod")
+            ? baseKey + "_lod"
+            : baseKey;
+        let actor = this.actors.get(u.id);
+        if (actor && actor.assetKey !== assetKey) {
+          this.removeActor(actor);
+          this.actors.delete(u.id);
+          actor = undefined;
+        }
+        actor ??= this.spawnActor(u, assetKey);
         actor.root.position.set(
           THREE.MathUtils.lerp(u.previous.x, u.x, alpha),
           0,
@@ -327,9 +381,7 @@ export class BattleView {
       }
     for (const [id, actor] of this.actors)
       if (!active.has(id)) {
-        this.scene.remove(actor.root);
-        actor.mixer?.stopAllAction();
-        actor.mixer?.uncacheRoot(actor.model);
+        this.removeActor(actor);
         this.actors.delete(id);
       }
     const projectileIds = new Set<number>();
@@ -362,20 +414,23 @@ export class BattleView {
         this.arrows.delete(id);
       }
     for (const corpse of this.corpses) {
-      if (!snapshot?.paused) corpse.time += dt;
-      corpse.root.rotation.z = Math.min(Math.PI / 2, corpse.time * 3.5);
+      if (!snapshot?.paused) {
+        corpse.time += dt;
+        corpse.mixer?.update(dt);
+      }
+      if (!corpse.mixer)
+        corpse.root.rotation.z = Math.min(Math.PI / 2, corpse.time * 3.5);
       corpse.root.position.y = -Math.max(0, corpse.time - 0.9) * 0.9;
     }
     this.corpses = this.corpses.filter((c) => {
       if (c.time > this.config.presentation.corpseSeconds) {
+        c.mixer?.stopAllAction();
+        this.disposeSkeletons(c.root);
         this.scene.remove(c.root);
         return false;
       }
       return true;
     });
-    const possessed = snapshot?.units.find(
-      (u) => u.id === snapshot.controlledId,
-    );
     if (possessed) {
       this.controlled = possessed.id;
       this.lastControlledX = possessed.x;
@@ -415,8 +470,10 @@ export class BattleView {
               )
             : 0;
         this.fpsModel.rotation.z =
-          possessed.kind === "swordsman" ? -swing * 0.65 : 0;
-        this.fpsModel.position.z = swing * 0.08;
+          possessed.kind === "swordsman"
+            ? -swing * (this.reducedMotion ? 0.15 : 0.65)
+            : 0;
+        this.fpsModel.position.z = this.reducedMotion ? 0 : swing * 0.08;
       }
     } else {
       if (this.controlled !== null) {
@@ -448,14 +505,16 @@ export class BattleView {
   }
   clear(): void {
     for (const actor of this.actors.values()) {
-      actor.mixer?.stopAllAction();
-      actor.mixer?.uncacheRoot(actor.model);
-      this.scene.remove(actor.root);
+      this.removeActor(actor);
     }
     this.actors.clear();
     for (const arrow of this.arrows.values()) this.scene.remove(arrow);
     this.arrows.clear();
-    for (const corpse of this.corpses) this.scene.remove(corpse.root);
+    for (const corpse of this.corpses) {
+      corpse.mixer?.stopAllAction();
+      this.disposeSkeletons(corpse.root);
+      this.scene.remove(corpse.root);
+    }
     this.corpses = [];
     this.selectedId = null;
     this.controlled = null;
@@ -471,6 +530,7 @@ export class BattleView {
       geometries: this.renderer.info.memory.geometries,
       textures: this.renderer.info.memory.textures,
       drawCalls: this.renderer.info.render.calls,
+      renderedFrames: this.renderer.info.render.frame,
     };
   }
 }

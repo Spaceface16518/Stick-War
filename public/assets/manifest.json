@@ -1,1 +1,50 @@
-{"version":1,"assets":[]}
+{
+  "version": 1,
+  "assets": [
+    {
+      "id": "archer",
+      "file": "archer.glb",
+      "bytes": 329596
+    },
+    {
+      "id": "archer_lod",
+      "file": "archer_lod.glb",
+      "bytes": 276556
+    },
+    {
+      "id": "arena",
+      "file": "arena.glb",
+      "bytes": 378080
+    },
+    {
+      "id": "fp_archer",
+      "file": "fp_archer.glb",
+      "bytes": 156424
+    },
+    {
+      "id": "fp_swordsman",
+      "file": "fp_swordsman.glb",
+      "bytes": 151832
+    },
+    {
+      "id": "miner",
+      "file": "miner.glb",
+      "bytes": 320188
+    },
+    {
+      "id": "miner_lod",
+      "file": "miner_lod.glb",
+      "bytes": 271444
+    },
+    {
+      "id": "swordsman",
+      "file": "swordsman.glb",
+      "bytes": 324368
+    },
+    {
+      "id": "swordsman_lod",
+      "file": "swordsman_lod.glb",
+      "bytes": 273976
+    }
+  ]
+}

@@ -873,3 +873,11 @@ small {
   inset: 0;
   pointer-events: none;
 }
+
+.sandbox-panel.collapsed > :not(:first-child) {
+  display: none;
+}
+.battle-center {
+  color: #f8efd4;
+  text-shadow: 0 1px 3px #142521;
+}

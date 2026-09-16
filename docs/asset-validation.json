@@ -1,0 +1,83 @@
+[
+  {
+    "id": "archer",
+    "bytes": 329596,
+    "triangles": 3624,
+    "materials": 2,
+    "clips": 8,
+    "joints": 20,
+    "validatorErrors": 0
+  },
+  {
+    "id": "archer_lod",
+    "bytes": 276556,
+    "triangles": 1429,
+    "materials": 2,
+    "clips": 8,
+    "joints": 20,
+    "validatorErrors": 0
+  },
+  {
+    "id": "arena",
+    "bytes": 378080,
+    "triangles": 9760,
+    "materials": 1,
+    "clips": 0,
+    "joints": 0,
+    "validatorErrors": 0
+  },
+  {
+    "id": "fp_archer",
+    "bytes": 156424,
+    "triangles": 904,
+    "materials": 2,
+    "clips": 0,
+    "joints": 0,
+    "validatorErrors": 0
+  },
+  {
+    "id": "fp_swordsman",
+    "bytes": 151832,
+    "triangles": 718,
+    "materials": 2,
+    "clips": 0,
+    "joints": 0,
+    "validatorErrors": 0
+  },
+  {
+    "id": "miner",
+    "bytes": 320188,
+    "triangles": 3256,
+    "materials": 2,
+    "clips": 8,
+    "joints": 20,
+    "validatorErrors": 0
+  },
+  {
+    "id": "miner_lod",
+    "bytes": 271444,
+    "triangles": 1296,
+    "materials": 2,
+    "clips": 8,
+    "joints": 20,
+    "validatorErrors": 0
+  },
+  {
+    "id": "swordsman",
+    "bytes": 324368,
+    "triangles": 3414,
+    "materials": 2,
+    "clips": 8,
+    "joints": 20,
+    "validatorErrors": 0
+  },
+  {
+    "id": "swordsman_lod",
+    "bytes": 273976,
+    "triangles": 1356,
+    "materials": 2,
+    "clips": 8,
+    "joints": 20,
+    "validatorErrors": 0
+  }
+]

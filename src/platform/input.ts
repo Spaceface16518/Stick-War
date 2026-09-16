@@ -83,11 +83,8 @@ export class InputController {
     document.addEventListener(
       "pointerlockchange",
       () => {
-        if (
-          document.pointerLockElement !== canvas &&
-          actions.possessed() &&
-          performance.now() > this.ignoreUntil
-        ) {
+        const locked = document.pointerLockElement === canvas;
+        if (!locked && actions.possessed()) {
           this.clear();
           actions.release();
         }

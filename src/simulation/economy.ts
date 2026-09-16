@@ -1,6 +1,7 @@
 import type { BattleWorld } from "./world";
 import {
   direction,
+  clamp,
   kinds,
   teams,
   type CommandResult,
@@ -17,15 +18,26 @@ export function spawnUnit(w: BattleWorld, team: Team, kind: UnitKind): number {
   const def = w.config.units[kind];
   const id = w.nextId++;
   const anchor = w.arena.teams[team].spawn;
-  const slot = [...w.units.values()].filter(
-    (u) => u.team === team && Math.abs(u.x - anchor.x) < 3,
-  ).length;
-  const z = Math.max(
-    -w.arena.halfWidth + 0.4,
-    Math.min(w.arena.halfWidth - 0.4, ((slot % 4) - 1.5) * 1.05),
-  );
-  const x =
-    anchor.x - direction(team) * Math.min(1.1, Math.floor(slot / 4) * 0.5);
+  const f = w.config.formation;
+  let x = anchor.x,
+    z = anchor.z;
+  for (let slot = 0; slot <= w.units.size + f.columns; slot++) {
+    z = clamp(
+      anchor.z +
+        direction(team) *
+          ((slot % f.columns) - (f.columns - 1) / 2) *
+          f.spacing,
+      -w.arena.halfWidth + 0.4,
+      w.arena.halfWidth - 0.4,
+    );
+    x = clamp(
+      anchor.x + direction(team) * Math.floor(slot / f.columns) * 0.85,
+      -w.arena.halfLength + 0.4,
+      w.arena.halfLength - 0.4,
+    );
+    if (![...w.units.values()].some((u) => Math.hypot(u.x - x, u.z - z) < 0.75))
+      break;
+  }
   w.units.set(id, {
     id,
     team,

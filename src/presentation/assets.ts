@@ -16,8 +16,9 @@ const schema = z.object({
 });
 export const teamColors = { blue: 0x376e9e, red: 0xb95338 };
 export class AssetStore {
-  private loaded = new Map<string, GLTF>();
+  private loaded = new Map<string, Pick<GLTF, "scene" | "animations">>();
   private variants = new Map<string, THREE.Group>();
+  private sharedTextures = new Map<string, THREE.Texture>();
   async load(
     progress: (fraction: number, message: string) => void,
   ): Promise<void> {
@@ -60,7 +61,30 @@ export class AssetStore {
         buffer = await response.arrayBuffer();
         received += buffer.byteLength;
       }
-      this.loaded.set(asset.id, await loader.parseAsync(buffer, base.href));
+      const gltf = await loader.parseAsync(buffer, base.href);
+      // All authored assets deliberately share the same named 1K paint atlas.
+      // Reuse its GPU texture even though each portable GLB embeds its own copy.
+      const unused = new Set<THREE.Texture>();
+      gltf.scene.traverse((object) => {
+        if (!(object instanceof THREE.Mesh)) return;
+        const materials = Array.isArray(object.material)
+          ? object.material
+          : [object.material];
+        for (const material of materials) {
+          const map = (material as THREE.MeshStandardMaterial).map;
+          if (!map || map.name !== "tabletop-palette") continue;
+          const shared = this.sharedTextures.get(map.name);
+          if (shared && shared !== map) {
+            material.map = shared;
+            unused.add(map);
+          } else this.sharedTextures.set(map.name, map);
+        }
+      });
+      for (const texture of unused) texture.dispose();
+      this.loaded.set(asset.id, {
+        scene: gltf.scene,
+        animations: gltf.animations,
+      });
     }
     progress(1, "Battlefield ready");
   }

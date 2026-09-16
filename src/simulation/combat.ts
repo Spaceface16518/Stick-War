@@ -23,6 +23,8 @@ function startAttack(w: BattleWorld, u: UnitState, automatic: boolean): void {
     arrowGravity: w.config.arrow.gravity,
     arrowLifetime: w.config.arrow.lifetime,
     arrowRadius: w.config.arrow.radius,
+    arrowVerticalVariation: w.config.arrow.verticalVariation,
+    meleeArcDegrees: w.config.combat.meleeArcDegrees,
   };
   u.cooldown =
     def.cooldown +
@@ -55,7 +57,7 @@ function fire(w: BattleWorld, u: UnitState, attack: AttackState): void {
           origin.y +
           0.5 * attack.arrowGravity * flight * flight) /
           flight +
-        w.random.signed() * w.config.arrow.verticalVariation,
+        w.random.signed() * attack.arrowVerticalVariation,
     };
   } else if (attack.automatic) return;
   else {
@@ -112,7 +114,7 @@ export function tickCombat(w: BattleWorld, dt: number): void {
         .nearby({ x: u.x, y: 0.9, z: u.z }, attack.range, u.team)
         .map((id) => targetById(w, id))
         .filter((t) => t && t.health > 0);
-      const arc = Math.cos((w.config.combat.meleeArcDegrees * Math.PI) / 360);
+      const arc = Math.cos((attack.meleeArcDegrees * Math.PI) / 360);
       const eligible = candidates.filter((t) => {
         if (!t) return false;
         const d = Math.max(0.001, distance(u, t));

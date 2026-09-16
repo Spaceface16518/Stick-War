@@ -82,7 +82,8 @@ export class GameApp {
           this.snapshot?.controlledId !== null &&
           this.snapshot?.controlledId !== undefined,
         paused: () => !!this.snapshot?.paused || this.modal,
-        active: () => !!this.simulation && !this.snapshot?.outcome,
+        active: () =>
+          !!this.simulation && !this.snapshot?.outcome && !this.modal,
         train: (k) => this.train(k),
         order: (o) => this.order(o),
         cycle: () => this.cycle(),
@@ -347,6 +348,7 @@ export class GameApp {
     }
   }
   private applySettings() {
+    this.view.reducedMotion = this.settings.reducedMotion;
     this.input.sensitivity = this.settings.sensitivity;
     this.audio.volume = this.settings.volume;
     document.body.classList.toggle(

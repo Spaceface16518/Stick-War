@@ -40,6 +40,8 @@ export interface AttackState {
   arrowGravity: number;
   arrowLifetime: number;
   arrowRadius: number;
+  arrowVerticalVariation: number;
+  meleeArcDegrees: number;
 }
 export type UnitPhase = "idle" | "walk" | "mine" | "carry" | "attack" | "hit";
 export interface UnitState extends Point {

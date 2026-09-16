@@ -23,15 +23,17 @@ export function formationPosition(w: BattleWorld, unit: UnitState): Point {
     siblings.findIndex((u) => u.id === unit.id),
   );
   const row = Math.floor(slot / f.columns);
-  const z = clamp(
-    ((slot % f.columns) - (f.columns - 1) / 2) * f.spacing,
-    -w.arena.halfWidth + 0.4,
-    w.arena.halfWidth - 0.4,
-  );
+  const z =
+    dir *
+    clamp(
+      ((slot % f.columns) - (f.columns - 1) / 2) * f.spacing,
+      -w.arena.halfWidth + 0.4,
+      w.arena.halfWidth - 0.4,
+    );
   if (order === "retreat")
     return {
       x: clamp(
-        base.statue.x - dir * f.retreatOffset - dir * row * 0.7,
+        base.statue.x - dir * Math.max(1.55, f.retreatOffset) - dir * row * 0.7,
         -w.arena.halfLength + 0.5,
         w.arena.halfLength - 0.5,
       ),
@@ -52,6 +54,26 @@ function moveToward(
   dt: number,
   avoid = true,
 ): void {
+  // Route around the stationary statue footprint when the destination lies beyond it.
+  // This keeps inner formation columns from walking forever into their own base.
+  for (const statue of w.statues.values()) {
+    const dir = Math.sign(destination.x - u.x);
+    if (
+      statue.health <= 0 ||
+      !dir ||
+      (statue.x - u.x) * dir < -1.5 ||
+      (destination.x - statue.x) * dir < 1.5 ||
+      Math.abs(destination.z - statue.z) >= 1.5
+    )
+      continue;
+    const side = Math.sign(u.z - statue.z) || (u.id % 2 ? 1 : -1);
+    const z = statue.z + side * 1.7;
+    destination =
+      Math.abs(u.x - statue.x) < 1.55 && Math.abs(u.z - statue.z) < 1.55
+        ? { x: u.x, z }
+        : { x: statue.x + dir * 1.65, z };
+    break;
+  }
   let dx = destination.x - u.x,
     dz = destination.z - u.z;
   const length = Math.hypot(dx, dz);
@@ -218,5 +240,10 @@ export function tickMovement(w: BattleWorld, dt: number): void {
     u.hitRemaining = Math.max(0, u.hitRemaining - dt);
     if (u.attack) u.phase = "attack";
     else if (u.hitRemaining > 0) u.phase = "hit";
+    else if (
+      u.kind !== "miner" &&
+      u.cooldown > w.config.units[u.kind].cooldown * 0.5
+    )
+      u.phase = "attack";
   }
 }
