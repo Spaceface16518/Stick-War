@@ -55,3 +55,5 @@ Sandbox starts paused with free, instant training. Choose either team, set order
 See [rewrite decisions](docs/REWRITE.md). The previous Rust game and editor remain in Git history; balance reference values are retained in `docs/legacy-game-config.ron`.
 
 Battle saves, native packaging and full ragdoll simulation are outside this release. Device performance targets are 60 fps desktop and 30 fps phones; browser emulation does not establish physical phone performance.
+
+[Blender authoring and export guide](art/README.md) · [Validation and measured limits](docs/VALIDATION.md) · [Commander gameplay screenshot](docs/evidence/desktop-commander-combat.png) · [First-person screenshot](docs/evidence/desktop-swordsman-pov.png)

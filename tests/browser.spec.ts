@@ -110,7 +110,8 @@ test("restart does not accumulate battle objects or GPU assets", async ({
   page,
 }) => {
   await open(page);
-  let baseline = 0;
+  let baseline = 0,
+    textures = 0;
   for (let n = 0; n < 5; n++) {
     await page.locator("#train-swordsman").click();
     await page.locator("#train-archer").click();
@@ -122,8 +123,13 @@ test("restart does not accumulate battle objects or GPU assets", async ({
       )
       .toBe(4);
     const d = await page.evaluate(() => window.__stickWar.diagnostics());
-    if (n === 0) baseline = d.rendering.geometries;
-    else expect(d.rendering.geometries).toBe(baseline);
+    if (n === 0) {
+      baseline = d.rendering.geometries;
+      textures = d.rendering.textures;
+    } else {
+      expect(d.rendering.geometries).toBe(baseline);
+      expect(d.rendering.textures).toBe(textures);
+    }
     await page.getByRole("button", { name: "Pause menu" }).click();
     await page.getByRole("button", { name: "Restart battle" }).click();
     await expect
@@ -232,4 +238,192 @@ test("100-unit sandbox survives a simulation stress run", async ({ page }) => {
     window.__stickWar.advance(15);
   });
   expect((await state(page)).units.length).toBeGreaterThan(50);
+});
+
+test("pointer-lock loss releases possession and entry cannot fire", async ({
+  page,
+}, info) => {
+  test.skip(info.project.name !== "desktop", "Desktop pointer lock");
+  await open(page);
+  await page.locator("#train-swordsman").click();
+  await page.locator("#sandbox-pause").click();
+  await page.keyboard.press("Tab");
+  await expect
+    .poll(() => page.evaluate(() => document.pointerLockElement?.id))
+    .toBe("battlefield");
+  expect(
+    (await state(page)).units.find((u) => u.kind === "swordsman")!.cooldown,
+  ).toBe(0);
+  await page.evaluate(() => document.exitPointerLock());
+  await expect.poll(async () => (await state(page)).controlledId).toBeNull();
+  await expect(page.locator("#pov")).toBeHidden();
+});
+
+test("valid balance reload updates future requests; invalid reload keeps prior values", async ({
+  page,
+}) => {
+  const { readFile, writeFile } = await import("node:fs/promises");
+  const configPath = new URL("../config/game.json", import.meta.url);
+  const original = await readFile(configPath, "utf8");
+  await open(page);
+  try {
+    const changed = JSON.parse(original);
+    changed.units.swordsman.cost = 77;
+    await writeFile(configPath, JSON.stringify(changed, null, 2) + "\n");
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__stickWar.config().units.swordsman.cost),
+      )
+      .toBe(77);
+    changed.economy.passiveSeconds = 0;
+    await writeFile(configPath, JSON.stringify(changed, null, 2) + "\n");
+    await expect(page.locator("#dev-error")).toContainText(
+      "Balance reload rejected",
+    );
+    expect(
+      await page.evaluate(
+        () => window.__stickWar.config().economy.passiveSeconds,
+      ),
+    ).toBe(2);
+    expect(
+      await page.evaluate(
+        () => window.__stickWar.config().units.swordsman.cost,
+      ),
+    ).toBe(77);
+  } finally {
+    await writeFile(configPath, original);
+  }
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__stickWar.config().units.swordsman.cost),
+    )
+    .toBe(100);
+  await expect(page.locator("#dev-error")).toBeHidden();
+});
+
+test("rendered battle performance sample and static-menu idle", async ({
+  page,
+}, info) => {
+  await open(page);
+  const samples: unknown[] = [];
+  const viewport = page.viewportSize()!;
+  await page.mouse.move(viewport.width / 2, viewport.height * 0.6);
+  await page.mouse.wheel(viewport.height, 0);
+  await page.mouse.wheel(0, -350);
+  await page.evaluate(() => {
+    const c = window.__stickWar.config();
+    c.units.swordsman.health = 100000;
+    c.units.archer.health = 100000;
+    window.__stickWar.configure(c);
+  });
+  for (const cap of [12, 50]) {
+    await command(page, { type: "sandbox", populationCap: cap });
+    await page.evaluate((cap) => {
+      for (const team of ["blue", "red"] as const) {
+        for (
+          let i = window.__stickWar
+            .snapshot()!
+            .units.filter((u) => u.team === team).length;
+          i < cap;
+          i++
+        )
+          window.__stickWar.command({
+            type: "train",
+            team,
+            kind: i % 3 ? "swordsman" : "archer",
+          });
+      }
+      window.__stickWar.command({ type: "pause", paused: false });
+      for (const team of ["blue", "red"] as const)
+        window.__stickWar.command({ type: "order", team, order: "attack" });
+      window.__stickWar.advance(10);
+    }, cap);
+    const timing = await page.evaluate(
+      () =>
+        new Promise<{ meanMs: number; p95Ms: number; samples: number }>(
+          (resolve) => {
+            const times: number[] = [];
+            let last = 0;
+            function frame(now: number) {
+              if (last) times.push(now - last);
+              last = now;
+              if (times.length < 180) requestAnimationFrame(frame);
+              else {
+                const sorted = [...times].sort((a, b) => a - b);
+                resolve({
+                  meanMs: times.reduce((a, b) => a + b, 0) / times.length,
+                  p95Ms: sorted[Math.floor(sorted.length * 0.95)],
+                  samples: times.length,
+                });
+              }
+            }
+            requestAnimationFrame(frame);
+          },
+        ),
+    );
+    samples.push({
+      requestedUnits: cap * 2,
+      scenario:
+        "Sustained combat centered in view; increased health prevents population decay",
+      ...timing,
+      diagnostics: await page.evaluate(() => window.__stickWar.diagnostics()),
+    });
+    await command(page, { type: "pause", paused: true });
+    await page.screenshot({ path: info.outputPath(`combat-${cap * 2}.png`) });
+  }
+  const report = JSON.stringify(
+    {
+      project: info.project.name,
+      viewport: page.viewportSize(),
+      samples,
+      physicalPhone: false,
+    },
+    null,
+    2,
+  );
+  const { writeFile } = await import("node:fs/promises");
+  await writeFile(info.outputPath("performance.json"), report);
+  await info.attach("performance", {
+    body: JSON.stringify(
+      {
+        project: info.project.name,
+        viewport: page.viewportSize(),
+        samples,
+        physicalPhone: false,
+      },
+      null,
+      2,
+    ),
+    contentType: "application/json",
+  });
+  await page.getByRole("button", { name: "Pause menu" }).click();
+  await page.getByRole("button", { name: "Main menu", exact: true }).click();
+  await expect
+    .poll(
+      async () =>
+        (await page.evaluate(() => window.__stickWar.diagnostics())).rendering
+          .actors,
+    )
+    .toBe(0);
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  const before = await page.evaluate(() => window.__stickWar.diagnostics());
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        let n = 0;
+        function wait() {
+          if (++n === 20) resolve();
+          else requestAnimationFrame(wait);
+        }
+        requestAnimationFrame(wait);
+      }),
+  );
+  expect(await page.evaluate(() => window.__stickWar.diagnostics())).toEqual(
+    before,
+  );
 });
