@@ -1,5 +1,13 @@
-import { distance, type AttackState, type UnitState, type Vec3 } from "./types";
+import {
+  clamp,
+  distance,
+  type AttackState,
+  type Point,
+  type UnitState,
+  type Vec3,
+} from "./types";
 import { targetById, type BattleWorld } from "./world";
+import { animationLibrary, type AttackClip } from "../content/animation";
 function aimDirection(yaw: number, pitch: number): Vec3 {
   return {
     x: Math.sin(yaw) * Math.cos(pitch),
@@ -9,9 +17,16 @@ function aimDirection(yaw: number, pitch: number): Vec3 {
 }
 function startAttack(w: BattleWorld, u: UnitState, automatic: boolean): void {
   const def = w.config.units[u.kind];
+  const variants = def.attackVariants;
+  let choice = w.random.next() * variants.reduce((sum, v) => sum + v.weight, 0);
+  const variant =
+    variants.find((v) => (choice -= v.weight) < 0) ??
+    variants[variants.length - 1];
+  const tempo = 1 + w.random.signed() * w.config.combat.timingVariation;
+  const windup = def.windup * variant.windupScale * tempo;
   u.attack = {
-    remaining: def.windup,
-    duration: def.windup,
+    remaining: windup,
+    duration: windup,
     damage: def.damage,
     range: def.range,
     aim: aimDirection(u.yaw, automatic ? 0 : w.input.pitch),
@@ -26,14 +41,18 @@ function startAttack(w: BattleWorld, u: UnitState, automatic: boolean): void {
     arrowVerticalVariation: w.config.arrow.verticalVariation,
     meleeArcDegrees: w.config.combat.meleeArcDegrees,
   };
-  u.cooldown =
-    def.cooldown +
-    w.config.combat.cooldownExtra +
-    w.random.signed() * w.config.combat.cooldownJitter;
+  u.cooldown = Math.max(
+    windup,
+    def.cooldown * variant.cooldownScale * tempo +
+      w.config.combat.cooldownExtra +
+      w.random.signed() * w.config.combat.cooldownJitter,
+  );
   u.attackMotion = {
+    clip: variant.clip,
+    contact: animationLibrary.attacks[variant.clip as AttackClip].contact,
     startedAt: w.elapsed,
     duration: u.cooldown,
-    windup: def.windup,
+    windup,
   };
   u.phase = "attack";
   w.events.push({ type: "attack", id: u.id, kind: u.kind });
@@ -89,11 +108,18 @@ function fire(w: BattleWorld, u: UnitState, attack: AttackState): void {
   w.events.push({ type: "shot", id: u.id, position: origin });
 }
 export function tickCombat(w: BattleWorld, dt: number): void {
-  const damage = new Map<number, number>();
-  const addDamage = (id: number, amount: number) =>
-    damage.set(id, (damage.get(id) ?? 0) + amount);
+  const damage = new Map<number, { amount: number; impulse: Point }>();
+  const addDamage = (id: number, amount: number, direction: Point) => {
+    const hit = damage.get(id) ?? { amount: 0, impulse: { x: 0, z: 0 } };
+    const length = Math.max(0.001, Math.hypot(direction.x, direction.z));
+    hit.amount += amount;
+    hit.impulse.x += (direction.x / length) * amount;
+    hit.impulse.z += (direction.z / length) * amount;
+    damage.set(id, hit);
+  };
   for (const u of w.units.values()) {
     if (u.kind === "miner") continue;
+    const alreadyWindingUp = u.attack !== null;
     u.cooldown = Math.max(0, u.cooldown - dt);
     const controlled = u.id === w.controlledId;
     const target = u.target === null ? undefined : targetById(w, u.target);
@@ -111,6 +137,9 @@ export function tickCombat(w: BattleWorld, dt: number): void {
     }
     const attack = u.attack;
     if (!attack) continue;
+    // A newly captured windup starts at this tick's timestamp. Do not consume
+    // its first interval before the pose has ever been presented.
+    if (!alreadyWindingUp && attack.remaining > 1e-8) continue;
     attack.remaining -= dt;
     if (attack.remaining > 1e-8) continue;
     if (u.kind === "archer") fire(w, u, attack);
@@ -132,7 +161,11 @@ export function tickCombat(w: BattleWorld, dt: number): void {
       eligible.sort(
         (a, b) => distance(u, a!) - distance(u, b!) || a!.id - b!.id,
       );
-      if (eligible[0]) addDamage(eligible[0].id, attack.damage);
+      if (eligible[0])
+        addDamage(eligible[0].id, attack.damage, {
+          x: eligible[0].x - u.x,
+          z: eligible[0].z - u.z,
+        });
     }
     u.attack = null;
   }
@@ -150,16 +183,28 @@ export function tickCombat(w: BattleWorld, dt: number): void {
     p.remaining -= step;
     Object.assign(p, to);
     if (hit) {
-      if (hit.id !== null) addDamage(hit.id, p.damage);
+      if (hit.id !== null) addDamage(hit.id, p.damage, p.velocity);
       w.projectiles.delete(p.id);
     } else if (p.remaining <= 1e-8 || p.y < 0) w.projectiles.delete(p.id);
   }
   // Aggregate all hits before resolving death: outcome cannot depend on team iteration order.
-  for (const [id, amount] of damage) {
+  for (const [id, { amount, impulse }] of damage) {
     const target = targetById(w, id);
     if (!target) continue;
     target.health = Math.max(0, target.health - amount);
-    if ("hitRemaining" in target) target.hitRemaining = 0.12;
+    if ("hitRemaining" in target) {
+      const length = Math.hypot(impulse.x, impulse.z);
+      target.hitRemaining = animationLibrary.hitSeconds;
+      target.hitMotion = {
+        startedAt: w.elapsed,
+        duration: animationLibrary.hitSeconds,
+        direction:
+          length > 0.001
+            ? { x: impulse.x / length, z: impulse.z / length }
+            : { x: -Math.sin(target.yaw), z: -Math.cos(target.yaw) },
+        strength: clamp((amount / target.maxHealth) * 3, 0.35, 1),
+      };
+    }
     w.events.push({
       type: "damage",
       id,

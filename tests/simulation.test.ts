@@ -354,6 +354,8 @@ describe("spatial invariants", () => {
     target: null,
     velocity: { x: 0, z: 0 },
     hitRemaining: 0,
+    hitMotion: null,
+    distanceTravelled: 0,
   });
   it("sweeps fast arrows past friendlies to the first hostile impact", () => {
     const p = new RapierSpatial(defaultArena);
@@ -388,6 +390,18 @@ describe("spatial invariants", () => {
   });
 });
 describe("configuration", () => {
+  it("rejects attack profiles that cannot produce a valid equipped action", () => {
+    for (const attackVariants of [
+      [],
+      [{ clip: "missing_clip", weight: 1, windupScale: 1, cooldownScale: 1 }],
+      [{ clip: "bow_draw", weight: 1, windupScale: 1, cooldownScale: 1 }],
+      [{ clip: "melee_slash", weight: 1, windupScale: 10, cooldownScale: 1 }],
+    ]) {
+      const config = structuredClone(defaultConfig);
+      config.units.swordsman.attackVariants = attackVariants;
+      expect(() => parseConfig(config)).toThrow();
+    }
+  });
   it("rejects invalid reloads and imprecise numeric seeds", () => {
     expect(() =>
       parseConfig({ ...defaultConfig, seed: Number(defaultConfig.seed) }),

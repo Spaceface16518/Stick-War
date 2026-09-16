@@ -6,4 +6,5 @@
 /playwright-report/
 /art/export/
 *.blend1
+__pycache__/
 .DS_Store

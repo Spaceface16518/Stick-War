@@ -315,6 +315,7 @@ export function tickMovement(w: BattleWorld, dt: number): void {
       }
     }
     const smoothing = w.config.arrow.velocitySmoothing;
+    u.distanceTravelled += distance(u, u.previous);
     u.velocity = {
       x:
         u.velocity.x * (1 - smoothing) +

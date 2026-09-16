@@ -28,6 +28,7 @@ assert.deepEqual(
   "Required asset bindings",
 );
 const arena = JSON.parse(fs.readFileSync("config/arena.json", "utf8"));
+const animation = JSON.parse(fs.readFileSync("config/animation.json", "utf8"));
 const report = [];
 for (const asset of manifest.assets) {
   assert.equal(asset.file, asset.id + ".glb", "Local asset paths only");
@@ -66,17 +67,19 @@ for (const asset of manifest.assets) {
       triangles <= (asset.id.endsWith("_lod") ? 2000 : 8000),
       `${asset.id}: triangle budget`,
     );
+    const gaitClips = Object.keys(animation.locomotion).filter(
+      (name) => name !== "runThreshold",
+    );
     for (const clip of [
-      "idle",
-      "walk",
-      "carry",
-      "mine",
-      "melee_attack",
-      "bow_attack",
-      "hit",
-      "death",
+      ...gaitClips,
+      "death_front",
+      "death_back",
+      "death_left",
+      "death_right",
     ])
       assert.ok(clips.includes(clip), `${asset.id}: missing ${clip}`);
+    if (asset.id.startsWith("miner"))
+      assert.ok(clips.includes("mine"), "Miner must have mining action");
     for (const joint of [
       "root",
       "head",
@@ -86,6 +89,8 @@ for (const asset of manifest.assets) {
       "bow_socket",
       "arrow_socket",
       "eye_socket",
+      "toe_l",
+      "toe_r",
     ])
       assert.ok(joints.includes(joint), `${asset.id}: missing ${joint}`);
     assert.ok(
@@ -115,11 +120,6 @@ for (const asset of manifest.assets) {
   }
   if (asset.id.startsWith("fp_")) {
     for (const name of [
-      "idle",
-      asset.id === "fp_archer" ? "bow_attack" : "melee_attack",
-    ])
-      assert.ok(clips.includes(name), `${asset.id}: missing ${name}`);
-    for (const name of [
       "hand_l",
       "hand_r",
       "weapon_socket",
@@ -128,6 +128,65 @@ for (const asset of manifest.assets) {
       "arrow_socket",
     ])
       assert.ok(joints.includes(name), `${asset.id}: missing ${name}`);
+  }
+  if (asset.id !== "arena") {
+    const prefix = asset.id.includes("archer")
+      ? "bow_"
+      : asset.id.includes("swordsman")
+        ? "melee_"
+        : null;
+    const attacks = Object.keys(animation.attacks).filter(
+      (name) => prefix && name.startsWith(prefix),
+    );
+    for (const name of [
+      "idle",
+      "hit_front",
+      "hit_back",
+      "hit_left",
+      "hit_right",
+      ...attacks,
+    ])
+      assert.ok(clips.includes(name), `${asset.id}: missing ${name}`);
+    for (const clip of root.listAnimations()) {
+      const times = clip
+        .listSamplers()
+        .map((sampler) => sampler.getInput().getArray());
+      const start = Math.min(...times.map((t) => t[0]));
+      const end = Math.max(...times.map((t) => t[t.length - 1]));
+      const expected =
+        animation.attacks[clip.getName()]?.seconds ??
+        animation.locomotion[clip.getName()]?.seconds ??
+        (clip.getName().startsWith("hit_")
+          ? animation.hitSeconds
+          : clip.getName().startsWith("death_")
+            ? animation.deathSeconds
+            : null);
+      assert.ok(
+        Math.abs(start) < 1e-5,
+        `${asset.id}: ${clip.getName()} must start at zero`,
+      );
+      if (expected !== null)
+        assert.ok(
+          Math.abs(end - expected) < 1e-5,
+          `${asset.id}: ${clip.getName()} duration differs from animation contract`,
+        );
+      assert.ok(
+        clip
+          .listChannels()
+          .every((channel) =>
+            joints.includes(channel.getTargetNode()?.getName()),
+          ),
+        `${asset.id}: actions must target rig bones, never mesh geometry`,
+      );
+    }
+    const nock = root
+      .listNodes()
+      .find((node) => node.getName() === "string_nock");
+    assert.equal(
+      nock?.getParentNode()?.getName(),
+      "bow_socket",
+      `${asset.id}: string follows the bow through layered motion`,
+    );
   }
   const entry = {
     id: asset.id,

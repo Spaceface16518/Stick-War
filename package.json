@@ -12,6 +12,8 @@
     "build:web": "npm run check && vite build && node scripts/check-budget.mjs",
     "serve:web": "vite preview --host 127.0.0.1",
     "assets:build": "node scripts/build-assets.mjs",
+    "assets:author": "node scripts/build-assets.mjs --author",
+    "assets:animate": "node scripts/build-assets.mjs --animate",
     "assets:check": "node scripts/check-assets.mjs",
     "format:check": "prettier --check src tests config index.html"
   },

@@ -20,7 +20,8 @@
       "windup": 0,
       "activationRange": 0,
       "capacity": 25,
-      "miningSeconds": 1.5
+      "miningSeconds": 1.5,
+      "attackVariants": []
     },
     "swordsman": {
       "asset": "swordsman",
@@ -34,7 +35,27 @@
       "windup": 0.16,
       "activationRange": 8.6,
       "capacity": 0,
-      "miningSeconds": 0
+      "miningSeconds": 0,
+      "attackVariants": [
+        {
+          "clip": "melee_slash",
+          "weight": 0.35,
+          "windupScale": 0.95,
+          "cooldownScale": 0.82
+        },
+        {
+          "clip": "melee_backhand",
+          "weight": 0.4,
+          "windupScale": 1.5,
+          "cooldownScale": 1
+        },
+        {
+          "clip": "melee_overhead",
+          "weight": 0.25,
+          "windupScale": 2.2,
+          "cooldownScale": 1.28
+        }
+      ]
     },
     "archer": {
       "asset": "archer",
@@ -48,7 +69,27 @@
       "windup": 0.22,
       "activationRange": 24,
       "capacity": 0,
-      "miningSeconds": 0
+      "miningSeconds": 0,
+      "attackVariants": [
+        {
+          "clip": "bow_quick",
+          "weight": 0.25,
+          "windupScale": 1.35,
+          "cooldownScale": 0.9
+        },
+        {
+          "clip": "bow_draw",
+          "weight": 0.5,
+          "windupScale": 2,
+          "cooldownScale": 1
+        },
+        {
+          "clip": "bow_hold",
+          "weight": 0.25,
+          "windupScale": 2.8,
+          "cooldownScale": 1.1
+        }
+      ]
     }
   },
   "statueHealth": 500,
@@ -64,7 +105,8 @@
   "combat": {
     "cooldownJitter": 0.005,
     "cooldownExtra": 0.01,
-    "meleeArcDegrees": 110
+    "meleeArcDegrees": 110,
+    "timingVariation": 0.07
   },
   "ai": {
     "recruitSeconds": 2,
@@ -92,5 +134,8 @@
     "eyeHeight": 1.6,
     "fov": 65
   },
-  "presentation": { "corpseSeconds": 1.8, "maxCorpses": 8 }
+  "presentation": {
+    "corpseSeconds": 3.2,
+    "maxCorpses": 8
+  }
 }

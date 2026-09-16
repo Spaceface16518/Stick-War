@@ -27,7 +27,9 @@ The three-archer attack/defend reproduction failed for both team assignments bef
 
 `tests/behavior.test.ts` contains complete sandbox scenarios; `tests/combat.test.ts` covers targeted edge cases. Browser tests exercise the real DOM controls and shipped GLBs. All scenarios use default combat values, except the existing explicitly labeled performance endurance fixture.
 
-## Animation corrections
+## Original animation corrections
+
+The following records the first correction pass. The later [rig animation pass](ANIMATION_QA.md) replaces its single attack clips and fixed marker with per-clip contact markers, six distance-driven gaits, directional hits and falls.
 
 The previous bow grip was offset from the palm, and local arm rotations tipped the bow across the torso. Weapon geometry now binds to named palm sockets. Blender bakes two-bone arm posing with independent wrist orientation, smooth anticipation/contact/recovery, torso follow-through, and improved locomotion. The pick uses both hands. The bow has a deforming string, nocked arrow, release, and reload motion. First-person arms have their own rig and attack clips.
 

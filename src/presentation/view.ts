@@ -6,6 +6,7 @@ import {
   type BattleSnapshot,
   type Team,
   type UnitState,
+  type Point,
 } from "../simulation/types";
 import { AssetStore, teamColors } from "./assets";
 import { UnitAnimator, attackClipProgress } from "./animation";
@@ -47,8 +48,10 @@ export class BattleView {
   });
   private corpses: {
     root: THREE.Group;
-    mixer: THREE.AnimationMixer | null;
+    animator: UnitAnimator | null;
     time: number;
+    origin: Point;
+    velocity: Point;
   }[] = [];
   private fpsModel: THREE.Group | null = null;
   private fpsKey = "";
@@ -271,25 +274,30 @@ export class BattleView {
       if (event.type === "death") {
         const actor = this.actors.get(event.unit.id);
         if (!actor) continue;
-        const loaded = this.assets.instantiate(actor.assetKey, event.unit.team);
-        const clone = loaded?.root ?? actor.model.clone(true);
-        const corpse = new THREE.Group();
-        corpse.add(clone);
-        corpse.position.set(event.unit.x, 0, event.unit.z);
-        corpse.rotation.y = event.unit.yaw;
-        this.scene.add(corpse);
-        const mixer = loaded ? new THREE.AnimationMixer(clone) : null;
-        const death = loaded?.clips.find((c) => c.name === "death");
-        if (death && mixer) {
-          const action = mixer.clipAction(death);
-          action.setLoop(THREE.LoopOnce, 1);
-          action.clampWhenFinished = true;
-          action.play();
-        }
-        this.corpses.push({ root: corpse, mixer, time: 0 });
+        // Transfer the existing posed skeleton. Death starts from the last
+        // walking/attacking pose and creates no additional GPU skeleton.
+        this.actors.delete(event.unit.id);
+        actor.root.remove(actor.bar, actor.ring);
+        actor.root.visible = true;
+        actor.animator?.die(event.unit);
+        const force = event.unit.hitMotion;
+        this.corpses.push({
+          root: actor.root,
+          animator: actor.animator,
+          time: 0,
+          origin: { x: event.unit.x, z: event.unit.z },
+          velocity: {
+            x:
+              event.unit.velocity.x +
+              (force?.direction.x ?? 0) * (force?.strength ?? 0),
+            z:
+              event.unit.velocity.z +
+              (force?.direction.z ?? 0) * (force?.strength ?? 0),
+          },
+        });
         while (this.corpses.length > this.config.presentation.maxCorpses) {
           const old = this.corpses.shift()!;
-          old.mixer?.stopAllAction();
+          old.animator?.dispose();
           this.disposeSkeletons(old.root);
           this.scene.remove(old.root);
         }
@@ -347,6 +355,7 @@ export class BattleView {
           snapshot.elapsed - (snapshot.paused ? 0 : (1 - alpha) / 60),
           dt,
           snapshot.paused,
+          alpha,
         );
         if (!actor.animator) {
           actor.model.rotation.z =
@@ -396,15 +405,23 @@ export class BattleView {
     for (const corpse of this.corpses) {
       if (!snapshot?.paused) {
         corpse.time += dt;
-        corpse.mixer?.update(dt);
       }
-      if (!corpse.mixer)
+      corpse.animator?.updateDeath(corpse.time, dt, !!snapshot?.paused);
+      if (!corpse.animator)
         corpse.root.rotation.z = Math.min(Math.PI / 2, corpse.time * 3.5);
-      corpse.root.position.y = -Math.max(0, corpse.time - 0.9) * 0.9;
+      const slide = 0.2 * (1 - Math.exp(-corpse.time * 5));
+      corpse.root.position.set(
+        corpse.origin.x + corpse.velocity.x * slide,
+        -Math.max(
+          0,
+          corpse.time - (this.config.presentation.corpseSeconds - 0.5),
+        ) * 0.7,
+        corpse.origin.z + corpse.velocity.z * slide,
+      );
     }
     this.corpses = this.corpses.filter((c) => {
       if (c.time > this.config.presentation.corpseSeconds) {
-        c.mixer?.stopAllAction();
+        c.animator?.dispose();
         this.disposeSkeletons(c.root);
         this.scene.remove(c.root);
         return false;
@@ -451,7 +468,7 @@ export class BattleView {
         const time =
           snapshot!.elapsed - (snapshot!.paused ? 0 : (1 - alpha) / 60);
         const animator = this.fpsAnimators.get(this.fpsKey);
-        animator?.update(possessed, time, dt, snapshot!.paused);
+        animator?.update(possessed, time, dt, snapshot!.paused, alpha);
         const swing = animator
           ? 0
           : Math.sin((attackClipProgress(possessed, time) ?? 0) * Math.PI);
@@ -497,7 +514,7 @@ export class BattleView {
     for (const arrow of this.arrows.values()) this.scene.remove(arrow);
     this.arrows.clear();
     for (const corpse of this.corpses) {
-      corpse.mixer?.stopAllAction();
+      corpse.animator?.dispose();
       this.disposeSkeletons(corpse.root);
       this.scene.remove(corpse.root);
     }

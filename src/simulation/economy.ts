@@ -59,6 +59,8 @@ export function spawnUnit(w: BattleWorld, team: Team, kind: UnitKind): number {
     cooldown: 0,
     attack: null,
     attackMotion: null,
+    hitMotion: null,
+    distanceTravelled: 0,
     phase: "idle",
     carried: 0,
     miningRemaining: def.miningSeconds,

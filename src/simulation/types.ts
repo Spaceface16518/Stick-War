@@ -44,6 +44,19 @@ export interface AttackState {
   meleeArcDegrees: number;
 }
 export type UnitPhase = "idle" | "walk" | "mine" | "carry" | "attack" | "hit";
+export interface AttackMotion {
+  clip: string;
+  contact: number;
+  startedAt: number;
+  duration: number;
+  windup: number;
+}
+export interface HitMotion {
+  startedAt: number;
+  duration: number;
+  direction: Point;
+  strength: number;
+}
 export interface UnitState extends Point {
   id: number;
   team: Team;
@@ -54,7 +67,9 @@ export interface UnitState extends Point {
   yaw: number;
   cooldown: number;
   attack: AttackState | null;
-  attackMotion: { startedAt: number; duration: number; windup: number } | null;
+  attackMotion: AttackMotion | null;
+  hitMotion: HitMotion | null;
+  distanceTravelled: number;
   phase: UnitPhase;
   carried: number;
   miningRemaining: number;

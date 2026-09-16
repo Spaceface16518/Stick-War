@@ -1,6 +1,7 @@
 import { z } from "zod";
 import source from "../../config/game.json";
 import arenaSource from "../../config/arena.json";
+import { animationLibrary } from "./animation";
 const positive = z.number().finite().positive();
 const nonnegative = z.number().finite().nonnegative();
 const count = z.number().int().nonnegative().max(1000000);
@@ -19,6 +20,19 @@ const unit = z
     activationRange: nonnegative,
     capacity: count,
     miningSeconds: nonnegative,
+    attackVariants: z.array(
+      z.object({
+        clip: z
+          .string()
+          .refine(
+            (clip) => Object.hasOwn(animationLibrary.attacks, clip),
+            "Unknown attack clip",
+          ),
+        weight: positive,
+        windupScale: positive,
+        cooldownScale: positive,
+      }),
+    ),
   })
   .refine((u) => u.windup <= u.cooldown, "Windup must fit within cooldown");
 export const configSchema = z
@@ -52,6 +66,7 @@ export const configSchema = z
       cooldownJitter: nonnegative,
       cooldownExtra: nonnegative,
       meleeArcDegrees: positive.max(180),
+      timingVariation: nonnegative.max(0.25),
     }),
     ai: z.object({
       recruitSeconds: positive,
@@ -90,6 +105,22 @@ export const configSchema = z
   .refine(
     (c) => c.economy.startingMiners <= c.economy.populationCap,
     "Starting miners exceed population cap",
+  )
+  .refine(
+    (c) =>
+      (["swordsman", "archer"] as const).every((kind) => {
+        const u = c.units[kind];
+        return (
+          u.attackVariants.length > 0 &&
+          u.attackVariants.every(
+            (variant) =>
+              variant.clip.startsWith(kind === "archer" ? "bow_" : "melee_") &&
+              u.windup * variant.windupScale <=
+                u.cooldown * variant.cooldownScale,
+          )
+        );
+      }),
+    "Attack variants must match the unit and fit windup within cooldown",
   );
 const anchors = z.object({ statue: point, mine: point, spawn: point });
 export const arenaSchema = z

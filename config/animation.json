@@ -1,0 +1,57 @@
+{
+  "locomotion": {
+    "walk": {
+      "distance": 1.2,
+      "seconds": 1.1
+    },
+    "carry": {
+      "distance": 1.2,
+      "seconds": 1.2
+    },
+    "run": {
+      "distance": 1.6,
+      "seconds": 0.8
+    },
+    "runThreshold": 2.05,
+    "walk_back": {
+      "distance": 1,
+      "seconds": 1.2
+    },
+    "strafe_left": {
+      "distance": 1,
+      "seconds": 1.2
+    },
+    "strafe_right": {
+      "distance": 1,
+      "seconds": 1.2
+    }
+  },
+  "attacks": {
+    "melee_slash": {
+      "seconds": 1.2,
+      "contact": 0.34
+    },
+    "melee_backhand": {
+      "seconds": 1.2,
+      "contact": 0.42
+    },
+    "melee_overhead": {
+      "seconds": 1.4,
+      "contact": 0.48
+    },
+    "bow_quick": {
+      "seconds": 1.6,
+      "contact": 0.36
+    },
+    "bow_draw": {
+      "seconds": 1.8,
+      "contact": 0.44
+    },
+    "bow_hold": {
+      "seconds": 2,
+      "contact": 0.54
+    }
+  },
+  "hitSeconds": 0.42,
+  "deathSeconds": 1.65
+}

@@ -6,4 +6,4 @@ Balance lives in config/game.json; arena anchors are exported from Blender. Vali
 
 Use npm ci, npm run check, npm run lint, npm test, npm run build:web, npm run assets:check, npm run test:browser. Use project-local Node packages and installed Blender 5; keep extra tooling in containers. Never commit node_modules, dist or scratch exports.
 
-Source art lives in art/sources; runtime GLB files and the manifest live in public/assets. Regenerate with npm run assets:build. Inspect actual browser screenshots after visual changes. Test desktop and landscape multi-touch separately; emulation does not prove physical-device performance.
+Source art lives in art/sources; runtime GLB files and the manifest live in public/assets. Export saved Blender edits with npm run assets:build. Explicitly regenerate rig actions with assets:animate or geometry and actions with assets:author; see art/README.md. Geometry and reusable rig actions live together in each source. Inspect actual browser screenshots after visual changes. Test desktop and landscape multi-touch separately; emulation does not prove physical-device performance.

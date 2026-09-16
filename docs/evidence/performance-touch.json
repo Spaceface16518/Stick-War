@@ -16,7 +16,7 @@
           "units": 24,
           "projectiles": 0,
           "colliders": 31,
-          "tick": 785
+          "tick": 786
         },
         "rendering": {
           "actors": 24,
@@ -24,37 +24,37 @@
           "corpses": 0,
           "geometries": 9,
           "textures": 48,
-          "drawCalls": 56,
-          "renderedFrames": 186
+          "drawCalls": 53,
+          "renderedFrames": 187
         },
-        "frameCount": 181,
-        "averageFrameMs": 17.125966850828732
+        "frameCount": 182,
+        "averageFrameMs": 17.123626373626372
       }
     },
     {
       "requestedUnits": 100,
       "scenario": "Sustained combat centered in view; increased health prevents population decay",
-      "meanMs": 16.66611111111111,
-      "p95Ms": 16.800000000000182,
+      "meanMs": 16.666666666666668,
+      "p95Ms": 16.700000000000728,
       "samples": 180,
       "diagnostics": {
         "simulation": {
           "units": 100,
-          "projectiles": 13,
+          "projectiles": 12,
           "colliders": 107,
           "tick": 1572
         },
         "rendering": {
           "actors": 100,
-          "arrows": 13,
+          "arrows": 12,
           "corpses": 0,
           "geometries": 9,
           "textures": 187,
-          "drawCalls": 217,
+          "drawCalls": 216,
           "renderedFrames": 371
         },
         "frameCount": 364,
-        "averageFrameMs": 17.123626373626372
+        "averageFrameMs": 17.123901098901097
       }
     }
   ],

@@ -52,6 +52,8 @@ const sync = (w: BattleWorld) =>
   w.spatial.sync([...w.units.values()], [...w.statues.values()]);
 function battle(w: BattleWorld, frames: number) {
   for (let i = 0; i < frames; i++) {
+    w.elapsed += 1 / 60;
+    w.tick++;
     sync(w);
     tickCombat(w, 1 / 60);
   }
@@ -235,6 +237,121 @@ describe("combat resolution", () => {
       [...w.units.values()].filter((u) => u.kind === "miner"),
     ).toHaveLength(2);
     expect(w.events.at(-1)).toMatchObject({ type: "spawn", kind: "miner" });
+    w.spatial.dispose();
+  });
+});
+
+describe("varied attack timing and physical reactions", () => {
+  it.each(["swordsman", "archer"] as const)(
+    "reproduces %s styles and timing from the full seed",
+    (kind) => {
+      const sequence = (seed: string) => {
+        const w = world();
+        w.mode = "sandbox";
+        w.random = new CombatRandom(seed);
+        const u = soldier(w, "blue", kind, 0);
+        w.controlledId = u.id;
+        w.input.attack = true;
+        const motions = [];
+        let stamp = -1;
+        for (let tick = 0; tick < 3000; tick++) {
+          battle(w, 1);
+          if (u.attackMotion && u.attackMotion.startedAt !== stamp) {
+            stamp = u.attackMotion.startedAt;
+            motions.push({ ...u.attackMotion });
+          }
+        }
+        w.spatial.dispose();
+        return motions;
+      };
+      const first = sequence("18446744073709551601");
+      expect(first).toEqual(sequence("18446744073709551601"));
+      expect(first).not.toEqual(sequence("18446744073709551602"));
+      expect(new Set(first.map((m) => m.clip)).size).toBe(3);
+      expect(new Set(first.map((m) => m.windup)).size).toBeGreaterThan(10);
+    },
+  );
+  for (const kind of ["swordsman", "archer"] as const)
+    for (const variant of defaultConfig.units[kind].attackVariants) {
+      it(`${variant.clip} resolves at its captured windup and retains timing after reload`, () => {
+        const w = world();
+        w.mode = "sandbox";
+        w.config.combat.timingVariation = 0;
+        w.config.combat.cooldownJitter = 0;
+        w.config.units[kind].attackVariants = [variant];
+        const u = soldier(w, "blue", kind, 0),
+          enemy = soldier(w, "red", "swordsman", 0.8);
+        u.yaw = Math.PI / 2;
+        w.controlledId = u.id;
+        w.input = { ...neutralInput, yaw: Math.PI / 2, attack: true };
+        battle(w, 1);
+        w.input.attack = false;
+        const captured = { ...u.attackMotion! };
+        expect(captured.windup).toBeCloseTo(
+          defaultConfig.units[kind].windup * variant.windupScale,
+        );
+        expect(captured.duration).toBeCloseTo(
+          defaultConfig.units[kind].cooldown * variant.cooldownScale +
+            w.config.combat.cooldownExtra,
+        );
+        w.config.units[kind].windup = 8;
+        w.config.units[kind].cooldown = 10;
+        const beforeContact = Math.ceil(captured.windup * 60) - 1;
+        battle(w, beforeContact);
+        expect(u.attack).not.toBeNull();
+        expect(enemy.health).toBe(100);
+        expect(w.events.filter((e) => e.type === "shot")).toHaveLength(0);
+        battle(w, 1);
+        expect(u.attack).toBeNull();
+        expect(u.attackMotion).toEqual(captured);
+        expect(w.elapsed - captured.startedAt).toBeGreaterThanOrEqual(
+          captured.windup - 1e-8,
+        );
+        expect(w.elapsed - captured.startedAt).toBeLessThan(
+          captured.windup + 1 / 60 + 1e-8,
+        );
+        if (kind === "archer")
+          expect(w.events.filter((e) => e.type === "shot")).toHaveLength(1);
+        else expect(enemy.health).toBe(80);
+        w.spatial.dispose();
+      });
+    }
+  it("captures the weighted direction of simultaneous damage in the death event", () => {
+    const w = world();
+    w.mode = "sandbox";
+    const u = soldier(w, "blue", "swordsman", 0);
+    for (const [id, x, z, vx, vz, damage] of [
+      [90, -2, 0, 300, 0, 70],
+      [91, 0, -2, 0, 300, 30],
+    ]) {
+      w.projectiles.set(id, {
+        id,
+        team: "red",
+        owner: 99,
+        x,
+        y: 1,
+        z,
+        previous: { x, y: 1, z },
+        velocity: { x: vx, y: 0, z: vz },
+        gravity: 0,
+        remaining: 1,
+        radius: 0.1,
+        damage,
+      });
+    }
+    battle(w, 1);
+    const event = w.events.find((e) => e.type === "death");
+    expect(event?.type).toBe("death");
+    if (event?.type === "death") {
+      expect(event.unit.hitMotion!.direction.x).toBeCloseTo(
+        70 / Math.hypot(70, 30),
+      );
+      expect(event.unit.hitMotion!.direction.z).toBeCloseTo(
+        30 / Math.hypot(70, 30),
+      );
+      expect(event.unit.hitMotion!.strength).toBe(1);
+    }
+    expect(w.units.has(u.id)).toBe(false);
     w.spatial.dispose();
   });
 });

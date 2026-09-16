@@ -11,7 +11,12 @@ declare global {
       config: () => GameConfig;
       diagnostics: () => {
         simulation: { units: number; colliders: number } | null;
-        rendering: { actors: number; geometries: number; textures: number };
+        rendering: {
+          actors: number;
+          corpses: number;
+          geometries: number;
+          textures: number;
+        };
       };
     };
   }
@@ -495,57 +500,59 @@ for (const defender of ["blue", "red"] as const) {
   });
 }
 
-test("exported bows draw along the aiming line and keep the grip in the palm", async ({
+test("fallen posed skeletons stay bounded and are released on repeated battle resets", async ({
   page,
 }) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Open sandbox ◇" }).waitFor();
-  const poses = await page.evaluate(async () => {
-    const assetsPath = "/src/presentation/assets.ts",
-      threePath = "/node_modules/.vite/deps/three.js";
-    const { AssetStore } = (await import(
-      assetsPath
-    )) as typeof import("../src/presentation/assets");
-    const T = (await import(threePath)) as typeof import("three");
-    const store = new AssetStore();
-    await store.load(() => {});
-    const results: {
-      asset: string;
-      gripGap: number;
-      draw: number;
-      verticalError: number;
-      forward: number;
-    }[] = [];
-    for (const asset of ["archer", "archer_lod", "fp_archer"]) {
-      const { root, clips } = store.instantiate(asset)!;
-      const mixer = new T.AnimationMixer(root),
-        clip = clips.find((c) => c.name === "bow_attack")!;
-      mixer.clipAction(clip).play();
-      for (const phase of [0.24, 0.3, 0.34]) {
-        mixer.setTime(phase * clip.duration);
-        root.updateMatrixWorld(true);
-        const position = (name: string) =>
-          root.getObjectByName(name)!.getWorldPosition(new T.Vector3());
-        const grip = position("bow_socket"),
-          hand = position("hand_l"),
-          nock = position("string_nock");
-        results.push({
-          asset,
-          gripGap: grip.distanceTo(hand),
-          draw: grip.distanceTo(nock),
-          verticalError: Math.abs(grip.y - nock.y),
-          forward: (grip.z - nock.z) * (asset.startsWith("fp_") ? -1 : 1),
-        });
+  await open(page);
+  let baseline: { geometries: number; textures: number } | null = null;
+  for (let cycle = 0; cycle < 3; cycle++) {
+    await page.evaluate(() => {
+      for (const team of ["blue", "red"] as const) {
+        for (let i = 0; i < 4; i++)
+          window.__stickWar.command({ type: "train", team, kind: "swordsman" });
+        for (let i = 0; i < 2; i++)
+          window.__stickWar.command({ type: "train", team, kind: "archer" });
+        window.__stickWar.command({ type: "order", team, order: "attack" });
       }
-      mixer.stopAllAction();
-      mixer.uncacheRoot(root);
-    }
-    return results;
-  });
-  for (const pose of poses) {
-    expect(pose.gripGap, `${pose.asset}: grip`).toBeLessThan(0.04);
-    expect(pose.draw, `${pose.asset}: drawn string`).toBeGreaterThan(0.25);
-    expect(pose.verticalError, `${pose.asset}: level arrow`).toBeLessThan(0.08);
-    expect(pose.forward, `${pose.asset}: forward aim`).toBeGreaterThan(0.25);
+    });
+    await expect
+      .poll(
+        async () =>
+          (await page.evaluate(() => window.__stickWar.diagnostics())).rendering
+            .actors,
+      )
+      .toBe(14);
+    await page.evaluate(() => {
+      window.__stickWar.command({ type: "pause", paused: false });
+      window.__stickWar.advance(70);
+      window.__stickWar.command({ type: "pause", paused: true });
+    });
+    await expect
+      .poll(
+        async () =>
+          (await page.evaluate(() => window.__stickWar.diagnostics())).rendering
+            .corpses,
+      )
+      .toBeGreaterThan(0);
+    expect(
+      (await page.evaluate(() => window.__stickWar.diagnostics())).rendering
+        .corpses,
+    ).toBeLessThanOrEqual(8);
+    await page.getByRole("button", { name: "Pause menu" }).click();
+    await page.getByRole("button", { name: "Restart battle" }).click();
+    await expect
+      .poll(
+        async () =>
+          (await page.evaluate(() => window.__stickWar.diagnostics())).rendering
+            .actors,
+      )
+      .toBe(2);
+    const d = await page.evaluate(() => window.__stickWar.diagnostics());
+    expect(d.rendering.corpses).toBe(0);
+    expect(d.simulation!.colliders).toBe(9);
+    if (baseline) {
+      expect(d.rendering.geometries).toBe(baseline.geometries);
+      expect(d.rendering.textures).toBe(baseline.textures);
+    } else baseline = d.rendering;
   }
 });

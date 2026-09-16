@@ -5,14 +5,16 @@ This is a browser-first release candidate on `codex/3d-rewrite`, based on verifi
 ## Automated checks
 
 - TypeScript strict checking, ESLint and Prettier.
-- 48 headless tests: economy symmetry over full miner trajectories, gathering/carrying/return, training reservation and cap rules, all orders, retreat around home statues, interrupted miners returning to deposits, backpedaling archers facing their targets, AI recruitment/replacement, direct-control ownership, facing-based swords, manual ballistic bows, cooldown preservation, frozen attack/training parameters, swept first-impact filtering, simultaneous draw, sandbox continuation, cleanup and a victory using unchanged balance.
-- Browser suite: 28 applicable scenarios pass across desktop 1280 × 720 and emulated landscape touch 844 × 390; two cases are intentionally skipped on the inapplicable device project. Scenarios include both possession classes, complete victory/defeat, all orders, restart/menu, five repeated resets, stable geometry/texture counts, loading failure/retry, hot reload rejection/recovery, pointer-lock loss, simultaneous touch movement/aim/attack, portrait pause, 100-unit stress and static-menu render idling. UI checks cover saved settings, modal pause/resume, cap edits during prop changes, invalid-cap recovery, collapse/reset behavior and training availability/countdowns for both teams.
+- 61 headless tests: economy symmetry over full miner trajectories, gathering/carrying/return, training reservation and cap rules, all orders, retreat around home statues, interrupted miners returning to deposits, backpedaling archers facing their targets, AI recruitment/replacement, direct-control ownership, facing-based swords, manual ballistic bows, cooldown preservation, frozen attack/training parameters, swept first-impact filtering, simultaneous draw, sandbox continuation, cleanup and a victory using unchanged balance.
+- Browser suite: 34 applicable scenarios pass across desktop 1280 × 720 and emulated landscape touch 844 × 390; two cases are intentionally skipped on the inapplicable device project. Scenarios include both possession classes, complete victory/defeat, all orders, restart/menu, five repeated resets, stable geometry/texture counts, loading failure/retry, hot reload rejection/recovery, pointer-lock loss, simultaneous touch movement/aim/attack, portrait pause, 100-unit stress and static-menu render idling. UI checks cover saved settings, modal pause/resume, cap edits during prop changes, invalid-cap recovery, collapse/reset behavior and training availability/countdowns for both teams.
 - Nine optimized GLBs pass Khronos validation with zero errors. Required materials, clips, joints and arena anchors survive optimization. Model details are recorded in `asset-validation.json`.
-- The complete production site is approximately 6.04 MiB raw, under the 12 MiB budget. The gzip total is an estimate, not a measurement of GitHub Pages transfer encoding.
+- The complete production site is approximately 7.27 MiB raw, under the 12 MiB budget. The gzip total is an estimate, not a measurement of GitHub Pages transfer encoding.
 
 The focused Lit UI refactor adds 20,060 raw bytes / 6,758 gzip bytes to production JavaScript compared with `c1b39a8`, measured with the same local build and Node gzip settings. Only the dialog, sandbox and training controls are reactive components; static screen templates mount on transitions, while small HUD updates and touch input remain imperative.
 
 The production preview also passes desktop and landscape touch checks for settings, both teams' training, collapsed controls, restart and menu transitions, with no page errors.
+
+The [rig animation and character detail pass](ANIMATION_QA.md) adds six speed-matched gait clips, six attack variants with seeded timing, additive directional hits, grounded falls and reusable rig authoring. Browser checks also cover all exported gaits, bow variants and repeated corpse cleanup.
 
 The subsequent [sandbox and animation pass](BEHAVIOR_QA.md) adds mirrored archer-defense, siege reinforcement, backward interception, mixed-army, pursuit/recall, retreat/regroup, crowding, and exported bow-grip tests.
 
@@ -22,7 +24,7 @@ The subsequent [sandbox and animation pass](BEHAVIOR_QA.md) adds mirrored archer
 
 - `desktop-commander.png`, `desktop-swordsman-pov.png`, `desktop-archer-pov.png`.
 - `mobile-commander.png`, `mobile-swordsman-pov.png`, `mobile-archer-pov.png`, `mobile-touch-combat.png`.
-- `animation-poses.png` and the desktop/mobile `archer-defense-blue.png` / `archer-defense-red.png` captures document the behavior and animation pass.
+- `animation-detail-poses.png` shows the current rigs; `animation-poses.png` and the desktop/mobile `archer-defense-blue.png` / `archer-defense-red.png` captures document the behavior and animation pass.
 - `ui-desktop-settings.png` and `ui-mobile-sandbox.png` show the Lit UI after the refactor; the browser suite also captures menu, collapsed tools and training countdown states on both viewport sizes.
 - `performance-desktop.json` and `performance-touch.json` contain frame-interval samples and simulation/rendering object counts.
 
@@ -45,7 +47,7 @@ npm run test:browser
 
 GitHub Actions performs these gates for the PR and master. After merge to `master`, the same workflow publishes the Vite `dist/` artifact to Pages. This draft PR does not replace the currently published game until merged. Blender is required only for authoring, not for running the game or validating committed runtime assets.
 
-Recorded combat-centered samples averaged 16.67 ms per frame (approximately 60 fps) for both 24 and 100 units on local headless Chrome. Desktop 95th-percentile intervals were 16.7 ms; landscape emulation was 16.7/16.8 ms. These are short, refresh-limited samples, not a long-duration device benchmark. `desktop-commander-combat.png` and `mobile-commander-combat.png` show the measured scene, paused immediately after sampling.
+After the rig animation and character-detail pass, recorded combat-centered samples averaged 16.67 ms per frame (approximately 60 fps) for both 24 and 100 units on local headless Chrome. Desktop 95th-percentile intervals were 16.7 ms; landscape emulation was 16.7 ms. These are short, refresh-limited samples, not a long-duration device benchmark. `desktop-commander-combat.png` and `mobile-commander-combat.png` show the measured scene, paused immediately after sampling.
 
 CI browser tests allow longer action budgets than local tests. Timing samples stop after three seconds even on slow renderers; a fixed frame-count wait must not turn low frame rate into a hung test. The first Linux run reached the final menu step but exhausted its old 45-second test budget, and its fixed-frame timing probes timed out. The CI-specific budgets and bounded timing probe address those failures.
 
