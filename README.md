@@ -22,7 +22,9 @@ npm run assets:check
 npm run build:web
 ```
 
-Playwright uses installed Chrome locally. In CI, install its Chromium browser with `npx playwright install --with-deps chromium`. The production site is generated in `dist/`; `npm run serve:web` previews it. GitHub Pages uses relative asset URLs.
+Playwright uses installed Chrome on macOS and installed Chromium on Linux when available. `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` can select a browser explicitly. In CI, install its Chromium browser with `npx playwright install --with-deps chromium`. The production site is generated in `dist/`; `npm run serve:web` previews it. GitHub Pages uses relative asset URLs.
+
+For the Tailscale workstation, see [amrit-max-n setup and editing](docs/REMOTE_DEVELOPMENT.md).
 
 ## Play
 
