@@ -40,6 +40,22 @@ function tinyArena(): ArenaDefinition {
   };
 }
 describe("battle rules", () => {
+  it("returns an interrupted miner to the deposit before restarting work", () => {
+    const s = sandbox();
+    s.command({ type: "pause", paused: false });
+    advance(s, 5);
+    expect(s.snapshot().units.find((u) => u.team === "blue")!.minerState).toBe(
+      "mining",
+    );
+    s.command({ type: "order", team: "blue", order: "retreat" });
+    advance(s, 2);
+    s.command({ type: "order", team: "blue", order: "defend" });
+    advance(s, 1.2);
+    const miner = s.snapshot().units.find((u) => u.team === "blue")!;
+    expect(miner.minerState).toBe("outbound");
+    expect(miner.carried).toBe(0);
+    s.dispose();
+  });
   it("can win with unchanged balance through economy, defense and a counterattack", () => {
     const s = new BattleSimulation(
       defaultConfig,

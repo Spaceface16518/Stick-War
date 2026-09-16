@@ -217,6 +217,7 @@ export function tickMovement(w: BattleWorld, dt: number): void {
             },
             dt,
           );
+          u.yaw = Math.atan2(target.x - u.x, target.z - u.z);
         } else if (
           d >
           (u.kind === "archer"

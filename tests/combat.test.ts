@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { defaultArena, defaultConfig } from "../src/content/config";
 import { tickCombat } from "../src/simulation/combat";
+import { acquireTargets, tickMovement } from "../src/simulation/movement";
 import { spawnUnit, tickEconomy } from "../src/simulation/economy";
 import { CombatRandom } from "../src/simulation/random";
 import {
@@ -56,6 +57,18 @@ function battle(w: BattleWorld, frames: number) {
   }
 }
 describe("combat resolution", () => {
+  it("keeps a backpedaling archer facing its target", () => {
+    const w = world();
+    w.mode = "sandbox";
+    const archer = soldier(w, "blue", "archer", 0);
+    soldier(w, "red", "swordsman", 2);
+    sync(w);
+    acquireTargets(w);
+    tickMovement(w, 1 / 60);
+    expect(archer.x).toBeLessThan(0);
+    expect(archer.yaw).toBeCloseTo(Math.PI / 2);
+    w.spatial.dispose();
+  });
   it.each(["skirmish", "sandbox"] as const)(
     "aggregates simultaneous statue damage in %s",
     (mode) => {

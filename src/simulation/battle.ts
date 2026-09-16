@@ -84,6 +84,12 @@ export class BattleSimulation {
         if (w.mode === "skirmish" && command.team !== "blue")
           return { ok: false, reason: "Enemy army is controlled by AI" };
         w.teams[command.team].order = command.order;
+        if (command.order === "retreat")
+          for (const u of w.units.values())
+            if (u.team === command.team && u.kind === "miner") {
+              u.minerState = u.carried > 0 ? "returning" : "outbound";
+              u.miningRemaining = w.config.units.miner.miningSeconds;
+            }
         return { ok: true };
       case "possess": {
         const u = w.units.get(command.id);
