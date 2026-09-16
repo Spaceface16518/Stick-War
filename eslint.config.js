@@ -1,0 +1,43 @@
+import js from "@eslint/js";
+import ts from "typescript-eslint";
+export default ts.config(
+  { ignores: ["dist/**", "node_modules/**", "art/**"] },
+  js.configs.recommended,
+  ...ts.configs.recommended,
+  {
+    files: ["**/*.ts", "scripts/*.mjs"],
+    languageOptions: {
+      globals: {
+        console: "readonly",
+        document: "readonly",
+        window: "readonly",
+        navigator: "readonly",
+        performance: "readonly",
+        requestAnimationFrame: "readonly",
+        cancelAnimationFrame: "readonly",
+        fetch: "readonly",
+        localStorage: "readonly",
+        location: "readonly",
+        URL: "readonly",
+        Blob: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        process: "readonly",
+        Buffer: "readonly",
+        TextDecoder: "readonly",
+        ResizeObserver: "readonly",
+        HTMLElement: "readonly",
+        HTMLInputElement: "readonly",
+        HTMLButtonElement: "readonly",
+        HTMLCanvasElement: "readonly",
+        Element: "readonly",
+        KeyboardEvent: "readonly",
+        PointerEvent: "readonly",
+        WheelEvent: "readonly",
+        MouseEvent: "readonly",
+        Event: "readonly",
+      },
+    },
+    rules: { "no-undef": "off" },
+  },
+);
